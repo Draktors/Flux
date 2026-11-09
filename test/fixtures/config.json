@@ -1,0 +1,6 @@
+{
+  "ownerName": "Alex",
+  "github": { "host": "github.com", "owner": "acme", "bots": ["review-bot", "lint-bot"] },
+  "linear": { "teams": ["APP", "WEB", "ACC", "PLN", "SYN", "OPS"] },
+  "paths": { "vault": "/tmp/flux-test/vault", "repos": "/tmp/flux-test/code", "dailyCommand": "/tmp/flux-test/daily.md" }
+}

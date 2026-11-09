@@ -1,0 +1,198 @@
+import { ArrowUpRight, Check, Hand, ListChecks, LockOpen, Pencil } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { RANKS } from '../../shared/ranks'
+import type { ProposedAction, TopicView } from '../../shared/types'
+import { displayTitle, markedBlocked, waitingFor } from './format'
+import { rankStyle } from './rankStyle'
+import { useDraft } from './useDraft'
+
+const MAX_SIGNALS = 3
+
+interface HeroProps {
+  view: TopicView
+  position: string | null
+}
+
+export function Hero({ view, position }: HeroProps) {
+  const { topic } = view
+  const [error, setError] = useState<string | null>(null)
+  const [blocking, setBlocking] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [reason, setReason] = useState('')
+  const [title, setTitle] = useDraft(topic.title, next =>
+    void window.flux.updateTopic(topic.id, { title: next }),
+  )
+  const style = rankStyle(view.rank)
+  const Icon = style.icon
+
+  useEffect(() => {
+    setError(null)
+    setBlocking(false)
+    setEditing(false)
+    setReason('')
+  }, [topic.id])
+
+  const attempt = (task: Promise<unknown>) => {
+    setError(null)
+    task.catch((failure: Error) => setError(failure.message.replace(/^Error invoking.*?: /, '')))
+  }
+
+  const launch = (action: ProposedAction) => {
+    if (action.prompt) attempt(window.flux.launchThread(topic.id, action))
+    else if (action.url) attempt(window.flux.openExternal(action.url))
+  }
+
+  const [primary, ...others] = view.actions
+
+  return (
+    <section className="hero" key={topic.id}>
+      <p className="hero-rank">
+        <span className="tile">
+          <Icon size={15} strokeWidth={2.2} aria-hidden="true" />
+        </span>
+        {view.rank === null ? 'Note' : RANKS[view.rank].label}
+      </p>
+
+      <div className="hero-title">
+        {editing ? (
+          <textarea
+            autoFocus
+            aria-label="Titre du sujet"
+            rows={1}
+            value={title}
+            onChange={event => setTitle(event.target.value.replace(/\n/g, ' '))}
+            onBlur={() => setEditing(false)}
+          />
+        ) : (
+          <h1>{displayTitle(title)}</h1>
+        )}
+        {!editing && (
+          <button
+            type="button"
+            className="ghost"
+            aria-label="Renommer le sujet"
+            title="Renommer"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      <p className="hero-meta">
+        {topic.links.slice(0, 3).map(link => (
+          <span key={link}>{link}</span>
+        ))}
+        {view.since && <span>{waitingFor(view.since)} d'attente</span>}
+        {position && <span>{position}</span>}
+      </p>
+
+      {topic.blocked && <p className="hero-blocked">Bloqué : {topic.blocked}</p>}
+      {!topic.blocked && markedBlocked(topic.title) && (
+        <p className="hero-blocked">PR marquée bloquée</p>
+      )}
+
+      {view.signals.length > 0 && (
+        <ul className="hero-signals">
+          {view.signals.slice(0, MAX_SIGNALS).map(signal => (
+            <li key={signal.id}>{signal.detail}</li>
+          ))}
+          {view.signals.length > MAX_SIGNALS && (
+            <li className="more">et {view.signals.length - MAX_SIGNALS} de plus</li>
+          )}
+        </ul>
+      )}
+
+      <div className="hero-actions">
+        {primary && (
+          <button type="button" className="pill solid" onClick={() => launch(primary)}>
+            {primary.label}
+            <ArrowUpRight size={17} aria-hidden="true" />
+          </button>
+        )}
+        {others.map(action => (
+          <button
+            type="button"
+            className="pill glass"
+            key={action.kind}
+            onClick={() => launch(action)}
+          >
+            {action.label}
+          </button>
+        ))}
+        {topic.status === 'inbox' && (
+          <button
+            type="button"
+            className="round glass"
+            aria-label="Passer en tâche"
+            title="Passer en tâche"
+            onClick={() => attempt(window.flux.updateTopic(topic.id, { status: 'open' }))}
+          >
+            <ListChecks size={17} aria-hidden="true" />
+          </button>
+        )}
+        {topic.blocked ? (
+          <button
+            type="button"
+            className="round glass"
+            aria-label="Débloquer"
+            title="Débloquer"
+            onClick={() => attempt(window.flux.updateTopic(topic.id, { blocked: undefined }))}
+          >
+            <LockOpen size={17} aria-hidden="true" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="round glass"
+            aria-label="Marquer bloqué"
+            title="Marquer bloqué"
+            aria-expanded={blocking}
+            onClick={() => setBlocking(current => !current)}
+          >
+            <Hand size={17} aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          className="round glass"
+          aria-label="Clore le sujet"
+          title="Clore le sujet"
+          onClick={() => attempt(window.flux.closeTopic(topic.id))}
+        >
+          <Check size={17} aria-hidden="true" />
+        </button>
+      </div>
+
+      {blocking && (
+        <form
+          className="block-form glass"
+          onSubmit={event => {
+            event.preventDefault()
+            if (!reason.trim()) return
+            attempt(window.flux.updateTopic(topic.id, { blocked: reason.trim() }))
+            setBlocking(false)
+            setReason('')
+          }}
+        >
+          <input
+            autoFocus
+            aria-label="Raison du blocage"
+            placeholder="Qu'est-ce qui bloque ?"
+            value={reason}
+            onChange={event => setReason(event.target.value)}
+          />
+          <button type="submit" className="pill solid small">
+            Marquer bloqué
+          </button>
+        </form>
+      )}
+
+      {error && (
+        <p className="hero-error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  )
+}

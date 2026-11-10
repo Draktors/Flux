@@ -1290,6 +1290,56 @@ button.ref-pill:hover {
   text-underline-offset: 3px;
 }
 
+/* Nouveautés */
+
+.changelog {
+  position: relative;
+  /* Above the page, which paints after the top bar */
+  z-index: 6;
+}
+
+.changelog .round {
+  position: relative;
+}
+
+.changelog .unread {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+}
+
+.changelog-pop {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(22, 24, 32, 0.94);
+  animation: fade 0.15s var(--ease);
+}
+
+.changelog-pop ul {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.changelog-pop li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.changelog-pop li span {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .prose {
   flex: 1;
   min-height: 0;

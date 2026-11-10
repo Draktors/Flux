@@ -2,6 +2,7 @@ import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-re
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import { Boot, type BootProgress } from './Boot'
+import { Changelog } from './Changelog'
 import { DailyView } from './DailyView'
 import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
@@ -348,6 +349,7 @@ export function App() {
           >
             <RefreshCw size={17} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
           </button>
+          <Changelog />
           <button type="button" className="pill glass" onClick={() => void window.flux.openCapture()}>
               Note
               <Plus size={16} aria-hidden="true" />

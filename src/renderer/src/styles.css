@@ -287,6 +287,18 @@ input {
   }
 }
 
+/* A narrow window keeps the bar airy: the logo and its name give way, the workspace switch stays */
+@media (max-width: 1280px) {
+  .brand-mark,
+  .brand-name {
+    display: none;
+  }
+
+  .workspace-switch {
+    margin-left: 0;
+  }
+}
+
 button.chip:hover {
   color: var(--text);
 }

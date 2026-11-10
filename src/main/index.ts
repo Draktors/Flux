@@ -12,7 +12,7 @@ import {
   shell,
   Tray,
 } from 'electron'
-import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
+import type { AppState, ProjectOptions, ProposedAction, SettingsPatch, Topic } from '../shared/types'
 import { CONFIG } from './config'
 import { Flux } from './engine/poller'
 import { Daily, localDate } from './llm/daily'
@@ -22,9 +22,9 @@ import { notificationAccess, requestNotificationAccess } from './notificationAcc
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
 import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar } from './sources/calendar'
-import { GITHUB_HOST, listGithubAccounts } from './sources/github'
-import { fetchJira } from './sources/jira'
-import { fetchCompleted, fetchLinear } from './sources/linear'
+import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
+import { fetchJira, listJiraProjects } from './sources/jira'
+import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
 import { fetchStoreReviews } from './sources/stores'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
@@ -220,6 +220,37 @@ function requireTopic(id: string): Topic {
   return topic
 }
 
+// What the projects picker offers: every Jira project and Linear team you can see, and your repos
+async function listProjects(): Promise<ProjectOptions> {
+  const errors: string[] = []
+  const settled = async <T>(label: string, task: Promise<T>, fallback: T): Promise<T> =>
+    task.catch(error => {
+      errors.push(`${label} : ${(error as Error).message}`)
+      return fallback
+    })
+  const token = settings.secret('jiraToken')
+  const email = settings.values.jiraEmail
+  const site = settings.jiraSite()
+  const linearKey = settings.secret('linearKey')
+  const [jira, linear, recent] = await Promise.all([
+    settings.uses('jira') && token && email && site
+      ? settled('Jira', listJiraProjects({ site, email, token }), [])
+      : [],
+    settings.uses('linear') && linearKey ? settled('Linear', listLinearTeams(linearKey), []) : [],
+    settled('GitHub', listRecentRepos(settings.values.githubAccount), []),
+  ])
+  // Repos already attached stay listed even without a recent PR
+  const attached = (settings.values.projects ?? []).flatMap(project => project.repos)
+  return {
+    projects: [
+      ...jira.map(project => ({ tracker: 'jira' as const, ...project })),
+      ...linear.map(team => ({ tracker: 'linear' as const, ...team })),
+    ],
+    repos: [...new Set([...recent, ...attached])],
+    errors,
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', () => flux.refresh())
@@ -270,8 +301,10 @@ function registerIpc(): void {
     settings.apply(
       patch.jiraSite === undefined ? patch : { ...patch, jiraSite: normalizeJiraSite(patch.jiraSite) },
     )
-    // A workspace switch only redraws from the cache; nothing else needs reloading
-    if (Object.keys(patch).every(key => key === 'workspace')) {
+    // Switching or editing workspaces only redraws from the cache; a new workspace is fetched
+    // by the next tick, which reads any workspace it has no data for yet
+    if (Object.keys(patch).every(key => key === 'workspace' || key === 'projects')) {
+      if (patch.projects !== undefined) flux.forgetOtherWorkspaces()
       void flux.switchWorkspace()
       return
     }
@@ -294,6 +327,7 @@ function registerIpc(): void {
   ipcMain.handle('flux:check-jira', (_event, site: string, email: string, token: string) =>
     checkJira(site, email, token),
   )
+  ipcMain.handle('flux:list-projects', () => listProjects())
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
   ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))
   ipcMain.handle('flux:open-daily', () => {

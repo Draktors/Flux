@@ -54,6 +54,7 @@ const api: FluxApi = {
   githubAccounts: () => ipcRenderer.invoke('flux:github-accounts'),
   checkLinearKey: key => ipcRenderer.invoke('flux:check-linear-key', key),
   checkJira: (site, email, token) => ipcRenderer.invoke('flux:check-jira', site, email, token),
+  listProjects: () => ipcRenderer.invoke('flux:list-projects'),
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),
   runDaily: () => ipcRenderer.invoke('flux:run-daily'),
   openDaily: () => ipcRenderer.invoke('flux:open-daily'),

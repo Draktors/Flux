@@ -1,4 +1,13 @@
-import { CalendarClock, CloudOff, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
+import {
+  CalendarClock,
+  CloudOff,
+  Layers,
+  Plug,
+  Plus,
+  RefreshCw,
+  Settings,
+  Waves,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import { Boot, type BootProgress } from './Boot'
@@ -84,6 +93,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>('queue')
   const [selected, setSelected] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Which page the settings window opens on: the selector's button goes straight to Espaces
+  const [settingsView, setSettingsView] = useState<'main' | 'workspaces'>('main')
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const showToast = (text: string, tone: ToastMessage['tone'] = 'ok') =>
     setToast({ id: Date.now(), text, tone })
@@ -344,6 +355,18 @@ export function App() {
                     {workspace.short}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  className="workspace-manage"
+                  aria-label="Gérer les espaces"
+                  title="Gérer les espaces"
+                  onClick={() => {
+                    setSettingsView('workspaces')
+                    setSettingsOpen(true)
+                  }}
+                >
+                  <Layers size={13} aria-hidden="true" />
+                </button>
               </nav>
             )}
           </div>
@@ -391,7 +414,10 @@ export function App() {
                 type="button"
                 className="chip glass compact"
                 title={`Connecter ${connectLabel}`}
-                onClick={() => setSettingsOpen(true)}
+                onClick={() => {
+                  setSettingsView('main')
+                  setSettingsOpen(true)
+                }}
               >
                 <Plug size={14} aria-hidden="true" />
                 <span className="chip-text">Connecter</span>
@@ -422,7 +448,10 @@ export function App() {
               className="round glass"
               aria-label="Réglages"
               title="Réglages"
-              onClick={() => setSettingsOpen(open => !open)}
+              onClick={() => {
+                setSettingsView('main')
+                setSettingsOpen(open => !open)
+              }}
             >
               <Settings size={17} aria-hidden="true" />
             </button>
@@ -480,6 +509,7 @@ export function App() {
               showToast('Réglages enregistrés')
             }}
             onError={message => showToast(message, 'error')}
+            initialView={settingsView}
           />
         )}
 

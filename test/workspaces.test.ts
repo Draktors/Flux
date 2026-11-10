@@ -2,8 +2,15 @@ import { describe, expect, it } from 'vitest'
 import type { Workspace } from '../src/main/config'
 import { itemFromTicket } from '../src/main/engine/rank'
 import { jiraQuery, ticketFromJiraIssue, type RawJiraIssue } from '../src/main/sources/jira'
-import { githubScope, owns, resolveWorkspace, topicVisible } from '../src/main/workspaces'
-import type { Topic } from '../src/shared/types'
+import {
+  githubScope,
+  owns,
+  projectsFromWorkspaces,
+  resolveWorkspace,
+  topicVisible,
+  workspacesFromProjects,
+} from '../src/main/workspaces'
+import type { Topic, TrackedProject } from '../src/shared/types'
 
 const PP: Workspace = {
   id: 'pp',
@@ -100,5 +107,42 @@ describe('Jira', () => {
     expect(jiraQuery(['CC'], ['CC-1', 'PP-2'])).toBe(
       'project in ("CC") AND ((assignee = currentUser() AND statusCategory != Done) OR key in (CC-1)) ORDER BY updated DESC',
     )
+  })
+})
+
+describe('projets suivis', () => {
+  const projects: TrackedProject[] = [
+    { tracker: 'jira', key: 'DEVPP', name: 'PanneauPocket', repos: ['acme/pp-app'], noReview: [] },
+    { tracker: 'linear', key: 'WEB', name: 'Site', repos: ['acme/web'], noReview: ['acme/web'] },
+  ]
+
+  it('fait un espace par projet, nommé par sa clef', () => {
+    const [pp, web] = workspacesFromProjects(projects)
+    expect(pp).toMatchObject({ id: 'devpp', short: 'DEVPP', label: 'PanneauPocket', jiraProjects: ['DEVPP'] })
+    expect(web).toMatchObject({ id: 'web', jiraProjects: [], linearTeams: ['WEB'] })
+    expect(web.github).toEqual({ repos: ['acme/web'], noReview: ['acme/web'] })
+  })
+
+  it('rattache un ticket Linear à son équipe', () => {
+    const [, web] = workspacesFromProjects(projects)
+    expect(owns(web, 'WEB-12')).toBe(true)
+    expect(owns(web, 'DEVPP-12')).toBe(false)
+    expect(owns(web, 'web#3')).toBe(true)
+  })
+
+  it('part de config.json, un projet par clef, avec les dépôts complets', () => {
+    const fromConfig = projectsFromWorkspaces([
+      {
+        id: 'cc',
+        label: 'Communicity',
+        short: 'CC',
+        jiraProjects: ['CCM', 'COM'],
+        github: { owner: 'citopia', repos: ['cc-mobile'], noReview: ['cc-mobile'] },
+      },
+    ])
+    expect(fromConfig).toEqual([
+      { tracker: 'jira', key: 'CCM', name: 'CCM', repos: ['citopia/cc-mobile'], noReview: ['citopia/cc-mobile'] },
+      { tracker: 'jira', key: 'COM', name: 'COM', repos: ['citopia/cc-mobile'], noReview: ['citopia/cc-mobile'] },
+    ])
   })
 })

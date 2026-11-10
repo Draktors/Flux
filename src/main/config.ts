@@ -15,6 +15,8 @@ export interface Workspace {
   short?: string;
   // Jira project keys whose tickets belong to this workspace
   jiraProjects: string[];
+  // Linear team keys whose tickets belong to this workspace
+  linearTeams?: string[];
   github: {
     // Organisation the repos live in; falls back to github.owner
     owner?: string;

@@ -1,5 +1,49 @@
-import type { Topic, WorkspaceInfo } from '../shared/types'
-import type { Workspace } from './config'
+import type { Topic, TrackedProject, WorkspaceInfo } from '../shared/types'
+import { CONFIG, type Workspace } from './config'
+
+// The projects chosen in the app, or else the workspaces of config.json; settings keep it current
+let current: Workspace[] = CONFIG.workspaces
+
+export function allWorkspaces(): Workspace[] {
+  return current
+}
+
+export function setWorkspaces(workspaces: Workspace[]): void {
+  current = workspaces
+}
+
+// One workspace per followed project, named by its key so the switch stays short
+export function workspacesFromProjects(projects: TrackedProject[]): Workspace[] {
+  return projects.map(project => ({
+    id: project.key.toLowerCase(),
+    label: project.name || project.key,
+    short: project.key,
+    jiraProjects: project.tracker === 'jira' ? [project.key.toUpperCase()] : [],
+    linearTeams: project.tracker === 'linear' ? [project.key.toUpperCase()] : [],
+    github: { repos: project.repos, noReview: project.noReview },
+  }))
+}
+
+// What the projects picker starts from before you chose anything: config.json, one project per key
+export function projectsFromWorkspaces(workspaces: Workspace[]): TrackedProject[] {
+  return workspaces.flatMap(workspace => {
+    const owner = workspace.github.owner ?? ''
+    const full = (repo: string) => (repo.includes('/') || !owner ? repo : `${owner}/${repo}`)
+    const repos = (workspace.github.repos ?? []).map(full)
+    const noReview = (workspace.github.noReview ?? []).map(full)
+    const keys: Array<[TrackedProject['tracker'], string]> = [
+      ...workspace.jiraProjects.map(key => ['jira', key] as [TrackedProject['tracker'], string]),
+      ...(workspace.linearTeams ?? []).map(key => ['linear', key] as [TrackedProject['tracker'], string]),
+    ]
+    return keys.map(([tracker, key]) => ({
+      tracker,
+      key,
+      name: keys.length === 1 ? workspace.label : key,
+      repos,
+      noReview,
+    }))
+  })
+}
 
 const PR_REF = /^([a-z0-9_.-]+)#\d+$/i
 const TICKET_REF = /^([A-Z][A-Z0-9]*)-\d+$/
@@ -19,7 +63,7 @@ function repoName(repo: string): string {
 // Whether a topic link (APP-12 or web#34) belongs to that workspace
 export function owns(workspace: Workspace, ref: string): boolean {
   const ticket = TICKET_REF.exec(ref)
-  if (ticket) return workspace.jiraProjects.includes(ticket[1])
+  if (ticket) return [...workspace.jiraProjects, ...(workspace.linearTeams ?? [])].includes(ticket[1])
   const pr = PR_REF.exec(ref)
   if (pr) return (workspace.github.repos ?? []).some(repo => repoName(repo) === pr[1].toLowerCase())
   return false

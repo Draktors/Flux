@@ -1,18 +1,32 @@
-import { X } from 'lucide-react'
+import { BellRing, Check, CircleAlert, Settings2, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Settings, SettingsPatch } from '../../shared/types'
+import type { NotificationAccess, Settings, SettingsPatch } from '../../shared/types'
 
 import { BrandIcon } from './Brand'
 
 type TextKey = Exclude<keyof SettingsPatch, 'onboarded'>
 
+const ACCESS_LABEL: Record<NotificationAccess, string> = {
+  authorized: 'Autorisées par macOS',
+  provisional: 'Autorisées par macOS, en mode discret',
+  denied: 'Bloquées par macOS : active Flux dans les réglages',
+  'not-determined': 'Pas encore autorisées',
+  unsupported: 'Autorisation illisible, envoie un essai pour vérifier',
+}
+
 export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay(): void }) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [patch, setPatch] = useState<SettingsPatch>({})
   const [saved, setSaved] = useState(false)
+  const [access, setAccess] = useState<NotificationAccess | null>(null)
 
   useEffect(() => {
     void window.flux.getSettings().then(setSettings)
+    // Back from System Settings, the window regains focus: read the permission again
+    const refresh = () => void window.flux.notificationAccess().then(setAccess)
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
   }, [])
 
   if (!settings) return null
@@ -95,23 +109,49 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
         />
       </label>
 
+      <section className="settings-notifications">
+        <span className="label-title">
+          <BellRing size={13} aria-hidden="true" />
+          Notifications
+        </span>
+        <p className={`access ${access === 'authorized' || access === 'provisional' ? 'ok' : 'warn'}`}>
+          {access === 'authorized' || access === 'provisional' ? (
+            <Check size={14} aria-hidden="true" />
+          ) : (
+            <CircleAlert size={14} aria-hidden="true" />
+          )}
+          {ACCESS_LABEL[access ?? 'unsupported']}
+        </p>
+        <div className="settings-row">
+          {access === 'not-determined' && (
+            <button
+              type="button"
+              className="pill glass small"
+              onClick={() => void window.flux.requestNotificationAccess().then(setAccess)}
+            >
+              Autoriser
+            </button>
+          )}
+          <button
+            type="button"
+            className="pill glass small"
+            onClick={() => void window.flux.testNotification()}
+          >
+            Envoyer un essai
+          </button>
+          <button
+            type="button"
+            className="pill glass small"
+            onClick={() => void window.flux.openNotificationSettings()}
+          >
+            <Settings2 size={14} aria-hidden="true" />
+            Réglages macOS
+          </button>
+        </div>
+      </section>
+
       <footer>
-        <button
-          type="button"
-          className="pill glass small notify-test"
-          onClick={() => void window.flux.testNotification()}
-        >
-          Tester une notification
-        </button>
-        <button
-          type="button"
-          className="pill glass small"
-          title="Si l’essai ne s’affiche pas, autorise Flux dans Réglages Système → Notifications"
-          onClick={() => void window.flux.openNotificationSettings()}
-        >
-          Réglages macOS
-        </button>
-        <button type="button" className="pill glass small" onClick={onReplay}>
+        <button type="button" className="pill glass small notify-test" onClick={onReplay}>
           Revoir l’accueil
         </button>
         {saved && <span role="status">Enregistré</span>}

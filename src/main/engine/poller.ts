@@ -86,6 +86,8 @@ export class Flux {
   private ticking = false
   private queued = false
   private tickCount = 0
+  // No state before the first sync: an early rebuild would publish an empty flux and skip the loading scene
+  private synced = false
 
   constructor(
     private readonly store: TopicStore,
@@ -229,6 +231,7 @@ export class Flux {
           .catch(error => this.track('calendar', error))
       }
       this.tickCount += 1
+      this.synced = true
 
       await this.rebuild(true)
       await this.sweepClosingThreads()
@@ -273,6 +276,7 @@ export class Flux {
   }
 
   private async rebuild(notify = false): Promise<void> {
+    if (!this.synced) return
     const now = new Date()
     const result = reconcile(this.topics, this.items(now), this.sessions, now)
 

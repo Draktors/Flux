@@ -4,6 +4,7 @@ import {
   siFigma,
   siGithub,
   siGooglecalendar,
+  siJira,
   siLinear,
   siNotion,
   siObsidian,
@@ -14,6 +15,7 @@ import {
 export type Brand =
   | 'github'
   | 'linear'
+  | 'jira'
   | 'claude'
   | 'obsidian'
   | 'calendar'
@@ -24,6 +26,7 @@ export type Brand =
 const ICONS: Record<Brand, SimpleIcon> = {
   github: siGithub,
   linear: siLinear,
+  jira: siJira,
   claude: siClaude,
   obsidian: siObsidian,
   calendar: siGooglecalendar,
@@ -36,6 +39,7 @@ const HOSTS: Array<[Brand, (host: string) => boolean]> = [
   // github.com, GitHub Enterprise Cloud (*.ghe.com) and self-hosted github.* hosts
   ['github', host => host === 'github.com' || host.endsWith('.ghe.com') || host.startsWith('github.')],
   ['linear', host => host === 'linear.app'],
+  ['jira', host => host.endsWith('.atlassian.net')],
   ['claude', host => host === 'claude.ai' || host === 'claude.com' || host.endsWith('.claude.ai')],
   ['calendar', host => host === 'calendar.google.com'],
   ['notion', host => host.endsWith('notion.so') || host.endsWith('notion.site')],

@@ -14,10 +14,17 @@ const TITLE = 'Chargement de votre espace'
 
 const SOURCES: Array<{ name: SourceName; label: string; brand: Brand }> = [
   { name: 'github', label: 'Pull requests', brand: 'github' },
-  { name: 'linear', label: 'Tickets', brand: 'linear' },
+  { name: 'jira', label: 'Tickets Jira', brand: 'jira' },
+  { name: 'linear', label: 'Tickets Linear', brand: 'linear' },
   { name: 'calendar', label: 'Agenda', brand: 'calendar' },
   { name: 'agents', label: 'Sessions Claude', brand: 'claude' },
 ]
+
+// A project tool you did not choose has no row at all
+function shown(name: SourceName, settings: Settings | null): boolean {
+  if (name !== 'jira' && name !== 'linear') return true
+  return settings ? settings.trackers.includes(name) : name === 'linear'
+}
 
 export type BootProgress = Partial<Record<SourceName, boolean>>
 
@@ -30,7 +37,8 @@ function sourceState(
 ): SourceState {
   if (name in progress) return progress[name] ? 'ok' : 'error'
   if (name === 'linear' && settings && !settings.hasLinearKey) return 'off'
-  if (name === 'calendar' && settings && !settings.hasCalendarUrl) return 'off'
+  if (name === 'jira' && settings && !settings.hasJiraToken) return 'off'
+  if (name === 'calendar' && settings && (!settings.calendar || !settings.hasCalendarUrl)) return 'off'
   return 'loading'
 }
 
@@ -65,9 +73,10 @@ export function Boot({
     return () => clearInterval(timer)
   }, [])
 
-  const states = SOURCES.map(source => sourceState(source.name, progress, settings))
+  const sources = SOURCES.filter(source => shown(source.name, settings))
+  const states = sources.map(source => sourceState(source.name, progress, settings))
   const settled = states.filter(state => state !== 'loading').length
-  const ratio = leaving ? 1 : (settled + 0.4) / (SOURCES.length + 1)
+  const ratio = leaving ? 1 : (settled + 0.4) / (sources.length + 1)
 
   return (
     <div
@@ -102,7 +111,7 @@ export function Boot({
         </div>
 
         <ul className="boot-sources">
-          {SOURCES.map((source, index) => (
+          {sources.map((source, index) => (
             <li
               key={source.name}
               className={states[index]}

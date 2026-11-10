@@ -37,7 +37,7 @@ export interface PullRequest {
   ci: string | null
   lastCommitAt: string
   viewerReview: { state: string; submittedAt: string | null } | null
-  approvedAt: string | null
+  reviewedAt: string | null
   reviewRequested: boolean
   requestedAt: string | null
   pendingReview: { updatedAt: string; createdAt: string; comments: number } | null
@@ -183,11 +183,12 @@ function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[
   return []
 }
 
-// An approval holds through pushes and replies: only the author asking me again brings the PR back.
-// A request older than the approval is a leftover, a team one for instance, not a new ask.
-function approvedSignals(pr: PullRequest, ref: string, approvedAt: string): Signal[] {
+// Once I have reviewed, whatever the verdict, the PR waits on the author: replies and pushes do not
+// bring it back, only the author asking me again does. A request older than my review is a leftover,
+// a team one for instance, not a new ask.
+function reviewedSignals(pr: PullRequest, ref: string, reviewedAt: string): Signal[] {
   const requestedAt = pr.requestedAt
-  if (!pr.reviewRequested || requestedAt === null || requestedAt <= approvedAt) return []
+  if (!pr.reviewRequested || requestedAt === null || requestedAt <= reviewedAt) return []
   return [
     signal(ref, 're-review', 2, `Review redemandée par ${names([pr.author])}`, 're-review', requestedAt),
   ]
@@ -195,8 +196,9 @@ function approvedSignals(pr: PullRequest, ref: string, approvedAt: string): Sign
 
 function theirSignals(pr: PullRequest, ref: string, ctx: RankContext): Signal[] {
   const { me, now } = ctx
-  if (pr.approvedAt !== null) return approvedSignals(pr, ref, pr.approvedAt)
+  if (pr.reviewedAt !== null) return reviewedSignals(pr, ref, pr.reviewedAt)
 
+  // Left with a review GitHub dismissed: a push or a reply on my threads asks for a new one
   const stale = ageDays(pr.updatedAt, now) > DORMANT_DAYS
   const replies = pr.threads.filter(
     thread => !thread.resolved && thread.firstAuthor === me && isHuman(thread.lastAuthor, me),

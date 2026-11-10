@@ -83,12 +83,16 @@ function normalizeThread(raw: RawThread): ReviewThread {
   }
 }
 
-// A comment posted after an approval does not withdraw it: only the latest approve or
-// request-changes review counts, and GitHub marks it dismissed when the repo voids stale approvals
-function approvedAt(raw: RawPullRequest, me: string): string | null {
+const SUBMITTED = new Set(['COMMENTED', 'CHANGES_REQUESTED', 'APPROVED'])
+
+// My review counts from my latest submission, comment, change request or approval alike, until
+// GitHub dismisses my verdict, as repos voiding stale approvals do on push
+function reviewedAt(raw: RawPullRequest, me: string): string | null {
   const opinion = raw.latestOpinionatedReviews.nodes.find(review => review.author?.login === me)
-  const review = opinion ?? raw.viewerLatestReview
-  return review?.state === 'APPROVED' ? review.submittedAt : null
+  if (opinion?.state === 'DISMISSED') return null
+  const latest = raw.viewerLatestReview
+  if (latest !== null && SUBMITTED.has(latest.state)) return latest.submittedAt
+  return opinion?.submittedAt ?? null
 }
 
 export function normalizePullRequest(raw: RawPullRequest, me: string): PullRequest {
@@ -113,7 +117,7 @@ export function normalizePullRequest(raw: RawPullRequest, me: string): PullReque
     ci: commit?.statusCheckRollup?.state ?? null,
     lastCommitAt: commit?.committedDate ?? raw.updatedAt,
     viewerReview: raw.viewerLatestReview,
-    approvedAt: approvedAt(raw, me),
+    reviewedAt: reviewedAt(raw, me),
     reviewRequested: raw.viewerLatestReviewRequest !== null,
     requestedAt: request?.createdAt ?? null,
     pendingReview: pending

@@ -1044,6 +1044,34 @@ button.chip:hover {
   color: #b18cff;
 }
 
+.daily-kind.kind-pushed {
+  color: #6ea8ff;
+}
+
+.daily-kind.kind-wip {
+  color: var(--waiting);
+}
+
+.daily-kind.kind-meeting {
+  color: #5fd0c4;
+}
+
+/* What to say at the stand-up, read aloud in a few seconds */
+.daily-standup {
+  margin: 4px 0 18px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+}
+
+.daily-standup p {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .daily-kind.kind-blocked {
   color: var(--danger);
 }

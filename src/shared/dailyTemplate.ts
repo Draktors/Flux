@@ -3,12 +3,14 @@ export const DAILY_TEMPLATE = `Daily de Flux : prépare le stand-up et surveille
 
 ## Ce que Flux attend
 
-Flux affiche lui-même ce qui a été fait la veille, les bloquants et la file. Ce skill fait quatre choses :
+Flux affiche lui-même ce qui a été fait la veille (PR, reviews, tickets, commits, réunions), les bloquants et la file. Ce skill fait six choses :
 
 1. **Intentions** : choisir les 3 sujets du jour parmi les candidats fournis, dans l'ordre où les traiter. D'abord ce qui débloque quelqu'un, puis ce qui attend depuis longtemps.
 2. **Titres courts** : reformuler chaque titre en 8 mots au plus, sans les refs.
 3. **Pour avancer** : pour chaque bloquant, l'action qui le ferait avancer, en une phrase.
-4. **Santé prod** : une ligne par source décrite plus bas, avec le signal phare en quelques mots.
+4. **Réunions** : pour chaque réunion d'hier, ce qui en est sorti en une phrase, lu dans les notes de réunion s'il y a un outil pour ça (Granola…).
+5. **Stand-up** : deux ou trois phrases à la première personne, prêtes à être dites : fait depuis hier, prévu aujourd'hui, bloquant éventuel.
+6. **Santé prod** : une ligne par source décrite plus bas, avec le signal phare en quelques mots.
 
 ## Sources de santé prod
 

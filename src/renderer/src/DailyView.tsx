@@ -170,8 +170,10 @@ function Yesterday({ sheet, actions }: { sheet: DailySheet; actions: LineActions
           {shown.map(line => (
             <li key={line.id} className="daily-row">
               <span className={`daily-kind kind-${line.kind}`}>{YESTERDAY_LABEL[line.kind]}</span>
-              <LineMain line={line} onOpen={() => open(line, actions.onOpen)} />
-              <span className="daily-side">{whenDone(line.at, sheet.date)}</span>
+              <LineMain line={line} meta={line.note} onOpen={() => open(line, actions.onOpen)} />
+              <span className="daily-side">
+                {line.kind === 'wip' ? 'maintenant' : whenDone(line.at, sheet.date)}
+              </span>
               <NoteButton line={line} onNote={actions.onNote} />
             </li>
           ))}
@@ -497,6 +499,11 @@ export function DailyView({ daily, onOpen, onNote }: { daily: DailySheet } & Lin
             )}
           </div>
         </header>
+        {daily.standup && (
+          <section className="daily-standup" aria-label="Pour le stand-up">
+            <p>{daily.standup}</p>
+          </section>
+        )}
         <Yesterday sheet={daily} actions={actions} />
         <Today sheet={daily} actions={actions} />
         <Blockers sheet={daily} actions={actions} />

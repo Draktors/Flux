@@ -28,7 +28,7 @@ Flux lance chaque matin le fichier \`${DAILY_COMMAND}\` avec \`claude -p\`, en l
 
 ## Ce que fait le skill
 
-Flux affiche lui-même Hier, les bloquants et le compte de la file. Le skill choisit les 3 intentions du jour parmi les candidats que Flux lui passe, raccourcit les titres, propose de quoi débloquer chaque bloquant et écrit la santé de la prod, une ligne par source.
+Flux affiche lui-même Hier, les bloquants et le compte de la file. Le skill choisit les 3 intentions du jour parmi les candidats que Flux lui passe, raccourcit les titres, propose de quoi débloquer chaque bloquant, dit ce qui est sorti de chaque réunion d'hier, écrit le paragraphe du stand-up et la santé de la prod, une ligne par source.
 
 Flux ajoute à la fin du skill les données du jour et cette forme de réponse, qu'il impose :
 

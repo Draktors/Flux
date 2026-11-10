@@ -131,11 +131,17 @@ export interface DailyContent {
   titles: Record<string, string>
   unblock: Record<string, string>
   health: HealthLine[]
+  // What to say at the stand-up, two or three spoken sentences; absent from older runs
+  standup?: string | null
+  // What came out of each meeting, by line id, from its notes
+  meetings?: Record<string, string>
 }
 
 // The run that asks the skill for the generated part of the daily
 export interface DailyRun {
   date: string
+  // Each workspace has its own stand-up, so its own run; null without workspaces
+  workspace?: string | null
   status: 'none' | 'running' | 'ready' | 'error'
   error?: string
   content?: DailyContent
@@ -167,10 +173,16 @@ export type YesterdayKind =
   | 'handled'
   | 'closed'
   | 'ticked'
+  // Commits pushed on a branch, and work left uncommitted
+  | 'pushed'
+  | 'wip'
+  | 'meeting'
 
 export interface DailyYesterday extends DailyLine {
   kind: YesterdayKind
   at: string
+  // A meeting's outcome, or what the commits of a branch were about
+  note?: string | null
 }
 
 export interface DailyIntention extends DailyLine {
@@ -209,6 +221,7 @@ export interface DailySheet {
   blockers: DailyBlocker[]
   health: HealthLine[] | null
   counts: RankCount[]
+  standup: string | null
 }
 
 export interface MergedPr {

@@ -21,8 +21,9 @@ import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
 import { Triage } from './llm/triage'
 import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
-import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
-import { fetchCalendar } from './sources/calendar'
+import { ARCHIVE_DIR, DAILY_DIR, REPOS_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
+import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
+import { fetchGitActivity } from './sources/commits'
 import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
 import { fetchJira, listJiraProjects } from './sources/jira'
 import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
@@ -31,6 +32,7 @@ import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
 import { adoptThreads } from './threads/desktop'
 import { goToThread, launchThread } from './threads/launch'
+import { allWorkspaces } from './workspaces'
 
 const THREAD_SETTLE_MS = 6_000
 
@@ -252,6 +254,14 @@ async function listProjects(): Promise<ProjectOptions> {
   }
 }
 
+// Loads today's run of every workspace, so switching shows each one's daily at once
+function syncDailies(): void {
+  const now = new Date()
+  const workspaces = allWorkspaces()
+  if (workspaces.length === 0) daily.sync(now, null)
+  for (const workspace of workspaces) daily.sync(now, workspace.id)
+}
+
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', async () => {
@@ -310,8 +320,8 @@ function registerIpc(): void {
     // by the next tick, which reads any workspace it has no data for yet
     if (Object.keys(patch).every(key => key === 'workspace' || key === 'projects')) {
       if (patch.projects !== undefined) flux.forgetOtherWorkspaces()
-      // The Daily tab follows the workspace: PP's note in PP, CC's in CC
-      daily.sync(new Date())
+      // The Daily tab follows the workspace: each one keeps its own run
+      syncDailies()
       void flux.switchWorkspace()
       return
     }
@@ -409,6 +419,11 @@ async function main(): Promise<void> {
       const url = settings.secret('calendarUrl')
       return url && settings.calendar() ? fetchCalendar(url) : null
     },
+    fetchMeetingsBetween: async (from, to) => {
+      const url = settings.secret('calendarUrl')
+      return url && settings.calendar() ? fetchCalendarBetween(url, from, to) : null
+    },
+    fetchGitActivity: since => fetchGitActivity(REPOS_DIR, since),
     closeThreads: topic => closeThreads(topic, flux.liveSessions()),
     adoptThreads: topics => adoptThreads(topics, THREADS_DIR),
     onTick: (now, state) => {
@@ -417,7 +432,7 @@ async function main(): Promise<void> {
     },
   })
 
-  daily.sync(new Date())
+  syncDailies()
   registerIpc()
   // Warm the account list so the settings panel opens with profile pictures already there
   void listGithubAccounts().catch(() => undefined)

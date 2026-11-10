@@ -85,6 +85,8 @@ async function commitsOf(
 ): Promise<Commit[]> {
   const output = await git(repo, [
     'log',
+    // A stash is work set aside, not pushed: it would read as a branch
+    '--exclude=refs/stash',
     '--all',
     '--no-merges',
     '--source',

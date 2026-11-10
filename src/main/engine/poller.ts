@@ -18,11 +18,20 @@ import type {
 import { RANKS } from '../../shared/ranks'
 import { CONFIG, type Workspace } from '../config'
 import { DAILY_COMMAND, DAILY_DIR, NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP_DIR } from '../paths'
+import { workspaceFromText } from '../calls/classify'
 import { fetchAgents } from '../sources/agents'
+import type { GitActivity } from '../sources/commits'
 import { fetchGithub, fetchReviewed, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
-import { allWorkspaces, githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
+import {
+  allWorkspaces,
+  githubScope,
+  ownsRepo,
+  resolveWorkspace,
+  topicVisible,
+  workspaceInfo,
+} from '../workspaces'
 import { compareViews, reconcile, type LiveSession } from './ball'
 import {
   buildDaily,
@@ -77,6 +86,9 @@ export interface FluxHooks {
   // My tickets completed since an ISO date; empty without Linear
   fetchCompleted(since: string): Promise<CompletedTicket[]>
   fetchMeetings(): Promise<Meeting[] | null>
+  // What the daily reads besides the queue: your commits and the meetings already over
+  fetchGitActivity(since: Date): Promise<GitActivity | null>
+  fetchMeetingsBetween(from: Date, to: Date): Promise<Meeting[] | null>
   closeThreads(topic: Topic): Promise<void>
   // Resolves the session id of threads opened in Claude Desktop; returns the topics it changed
   adoptThreads(topics: Topic[]): Promise<Topic[]>
@@ -112,8 +124,28 @@ function readJournal(now: Date): WrapupJournal {
   return readJournalFile(date) ?? emptyJournal(date)
 }
 
-function notePath(date: string): string {
-  return join(DAILY_DIR, `${date}.md`)
+// Only the repos of the workspace on screen; everything without workspaces
+export function gitFor(git: GitActivity | null, workspace: Workspace | null): GitActivity | null {
+  if (!git || !workspace) return git
+  const ours = (remote: string | null) => remote !== null && ownsRepo(workspace, remote, CONFIG.github.owner)
+  return {
+    commits: git.commits.filter(commit => ours(commit.remote)),
+    uncommitted: git.uncommitted.filter(work => ours(work.remote)),
+  }
+}
+
+// A meeting whose title names another workspace stays out; one naming none shows everywhere
+export function meetingsFor(meetings: Meeting[], workspace: Workspace | null, all: Workspace[]): Meeting[] {
+  if (!workspace) return meetings
+  return meetings.filter(meeting => {
+    const named = workspaceFromText(meeting.title, all)
+    return named === null || named === workspace.id
+  })
+}
+
+// One vault note per day and workspace, like the runs
+function notePath(date: string, workspace: string | null = null): string {
+  return join(DAILY_DIR, workspace ? `${date}-${workspace}.md` : `${date}.md`)
 }
 
 function summarize(view: TopicView) {
@@ -139,7 +171,10 @@ export class Flux {
   private meetings: Meeting[] = []
   private health = emptyHealth()
   private notifyState: NotifyState = EMPTY_NOTIFY_STATE
-  private daily: DailyRun = { date: '', status: 'none' }
+  // The daily run of each workspace ('' without workspaces), so a switch shows its own
+  private dailies = new Map<string, DailyRun>()
+  private git: GitActivity | null = null
+  private pastMeetings: Meeting[] = []
   private journal: WrapupJournal = emptyJournal('')
   private savedJournal = ''
   // Past days do not change: their journals are read once
@@ -203,17 +238,47 @@ export class Flux {
   }
 
   setDaily(run: DailyRun): void {
-    this.daily = run
+    this.dailies.set(run.workspace ?? '', run)
     void this.rebuild()
+  }
+
+  private dailyRun(): DailyRun {
+    return this.dailies.get(this.workspace()?.id ?? '') ?? { date: '', status: 'none' }
+  }
+
+  // Whether a topic belongs to the workspace on screen
+  private visibleTopic(topic: Topic): boolean {
+    return topicVisible(topic, this.workspace(), allWorkspaces())
+  }
+
+  // The intentions of other workspaces stay in the journal when this one changes its own
+  private withIntentions(ids: string[]): string[] {
+    const others = this.journal.intentions.filter(id => {
+      const topic = this.topic(id)
+      return topic !== undefined && !this.visibleTopic(topic)
+    })
+    return [...new Set([...others, ...ids])]
   }
 
   // Set by hand: a later daily run keeps them
   async setIntentions(ids: string[]): Promise<void> {
     const live = new Set(this.state ? [...this.state.queue, ...this.state.active, ...this.state.waiting, ...this.state.dormant].map(view => view.topic.id) : [])
     const kept = [...new Set(ids)].filter(id => live.has(id)).slice(0, MAX_INTENTIONS)
-    this.journal = { ...forDay(this.journal, new Date()), intentions: kept, intentionsEdited: true }
+    this.journal = { ...forDay(this.journal, new Date()), intentionsEdited: true }
+    this.journal = { ...this.journal, intentions: this.withIntentions(kept) }
     await this.rebuild()
     if (this.state) await this.exportDaily(this.state.daily)
+  }
+
+  // Commits and past meetings since the previous workday, read with the calendar
+  private async refreshDailyActivity(now: Date): Promise<void> {
+    const since = previousWorkday(now)
+    const [git, meetings] = await Promise.all([
+      this.hooks.fetchGitActivity(since).catch(() => null),
+      this.hooks.fetchMeetingsBetween(since, now).catch(() => null),
+    ])
+    if (git) this.git = git
+    if (meetings) this.pastMeetings = meetings.filter(meeting => meeting.end <= now.toISOString())
   }
 
   // Flux was off the previous workday: GitHub and Linear tell what was done, once a day
@@ -251,7 +316,7 @@ export class Flux {
   // The vault note follows the tab, written again whenever the intentions change
   private async exportDaily(sheet: DailySheet): Promise<void> {
     await mkdir(DAILY_DIR, { recursive: true })
-    const path = notePath(sheet.date)
+    const path = notePath(sheet.date, this.workspace()?.id ?? null)
     await writeFile(`${path}.tmp`, renderDailyNote(sheet, new Date()))
     await rename(`${path}.tmp`, path)
   }
@@ -418,6 +483,7 @@ export class Flux {
             this.track('calendar')
           })
           .catch(error => this.track('calendar', error))
+        await this.refreshDailyActivity(now)
       }
       this.tickCount += 1
       this.synced = true
@@ -567,13 +633,16 @@ export class Flux {
     const active = views.filter(view => view.ball === 'agent')
     this.journal = observe(this.journal, views, now, source => this.health[source].ok)
     // A new daily run proposes the intentions, unless they were set by hand
-    const content = this.daily.date === this.journal.date ? this.daily.content : undefined
+    const run = this.dailyRun()
+    const content = run.date === this.journal.date ? run.content : undefined
     const proposed = content !== undefined && content.generatedAt !== this.journal.intentionsFrom
     if (proposed) {
       this.journal = {
         ...this.journal,
         intentionsFrom: content.generatedAt,
-        intentions: this.journal.intentionsEdited ? this.journal.intentions : content.intentions,
+        intentions: this.journal.intentionsEdited
+          ? this.journal.intentions
+          : this.withIntentions(content.intentions),
       }
     }
     const times = this.settings.values.wrapupTimes
@@ -608,10 +677,16 @@ export class Flux {
         active,
         merged: this.cache().github?.merged ?? [],
         fallback: this.fallback,
-        run: this.daily,
+        run,
         skill: existsSync(DAILY_COMMAND) ? 'ready' : 'missing',
         dailyTime: this.settings.values.dailyTime,
-        notePath: existsSync(notePath(dayKey(now))) ? notePath(dayKey(now)) : null,
+        notePath: existsSync(notePath(dayKey(now), workspace?.id ?? null))
+          ? notePath(dayKey(now), workspace?.id ?? null)
+          : null,
+        visible: topic => this.visibleTopic(topic),
+        git: gitFor(this.git, workspace),
+        ticketPrefixes: workspace ? [...workspace.jiraProjects, ...(workspace.linearTeams ?? [])] : [],
+        meetings: meetingsFor(this.pastMeetings, workspace, allWorkspaces()),
       }),
       wrapup,
     }

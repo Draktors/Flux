@@ -9,6 +9,9 @@ export const YESTERDAY_LABEL: Record<YesterdayKind, string> = {
   handled: 'Traité',
   closed: 'Clos',
   ticked: 'Coché',
+  pushed: 'Poussé',
+  wip: 'En cours',
+  meeting: 'Réunion',
 }
 
 // One and many, as the footer counts read: « 1 à soumettre · 3 retours · 6 reviews »

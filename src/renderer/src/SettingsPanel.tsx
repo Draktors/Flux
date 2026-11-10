@@ -1,32 +1,90 @@
-import { X } from 'lucide-react'
+import { AtSign, CalendarDays, Check, Globe, Keyboard, KeyRound, X, type LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AccountPicker } from './AccountPicker'
+import { TimePicker } from './TimePicker'
+import { AddCalendarMenu, AddTrackerMenu, TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
+import { calendarInfo } from '../../shared/calendars'
+import type { TrackerName } from '../../shared/trackers'
 import { useEffect, useState, type FormEvent } from 'react'
-import type { Settings, SettingsPatch } from '../../shared/types'
+import type { GithubAccounts, Settings, SettingsPatch } from '../../shared/types'
 
-type TextKey = Exclude<keyof SettingsPatch, 'onboarded'>
+function InputShell({ icon: Icon, stored, children }: { icon: LucideIcon; stored?: boolean; children: ReactNode }) {
+  return (
+    <span className="input-shell">
+      <Icon size={16} aria-hidden="true" className="input-icon" />
+      {children}
+      {stored && (
+        <span className="input-stored">
+          <Check size={12} aria-hidden="true" />
+          Enregistrée
+        </span>
+      )}
+    </span>
+  )
+}
 
-export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay(): void }) {
+// Kept across openings so profile pictures show at once when the panel comes back
+let lastAccounts: GithubAccounts | null = null
+
+type TextKey = Exclude<
+  keyof SettingsPatch,
+  'onboarded' | 'githubAccount' | 'workspace' | 'trackers' | 'calendar'
+>
+
+export function SettingsPanel({
+  onClose,
+  onReplay,
+  onSaved,
+  onError,
+}: {
+  onClose(): void
+  onReplay(): void
+  onSaved(): void
+  onError(message: string): void
+}) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [patch, setPatch] = useState<SettingsPatch>({})
-  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [accounts, setAccounts] = useState<GithubAccounts | null>(lastAccounts)
 
   useEffect(() => {
     void window.flux.getSettings().then(setSettings)
+    void window.flux
+      .githubAccounts()
+      .then(fresh => {
+        lastAccounts = fresh
+        setAccounts(fresh)
+      })
+      .catch(() => {
+        if (!lastAccounts) setAccounts({ host: 'github.com', logins: [], active: null, profiles: {} })
+      })
   }, [])
 
   if (!settings) return null
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    await window.flux.saveSettings(patch)
-    setPatch({})
-    setSaved(true)
-    setSettings(await window.flux.getSettings())
+    setSaving(true)
+    try {
+      await window.flux.saveSettings(patch)
+      onSaved()
+    } catch (error) {
+      setSaving(false)
+      onError(`Réglages non enregistrés : ${(error as Error).message}`)
+    }
   }
+
+  const chosenAccount =
+    patch.githubAccount !== undefined ? patch.githubAccount : settings.githubAccount
+
+  const trackers = patch.trackers ?? settings.trackers
+  const chosenCalendar = patch.calendar ?? settings.calendar
+  const calendar = chosenCalendar === 'none' ? null : chosenCalendar
+  const setTrackers = (next: TrackerName[]) => setPatch(current => ({ ...current, trackers: next }))
 
   const field = (key: TextKey) => ({
     value: patch[key] ?? '',
     onChange: (event: { target: { value: string } }) => {
-      setSaved(false)
       setPatch(current => ({ ...current, [key]: event.target.value }))
     },
   })
@@ -48,44 +106,152 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
         </button>
       </header>
 
-      <label>
-        Clef API Linear
-        <input
-          type="password"
-          autoComplete="off"
-          placeholder={settings.hasLinearKey ? 'Enregistrée' : 'lin_api_…'}
-          {...field('linearKey')}
+      <div className="field">
+        <span>Compte GitHub</span>
+        <AccountPicker
+          accounts={accounts}
+          value={chosenAccount}
+          onChange={githubAccount => {
+            setPatch(current => ({ ...current, githubAccount }))
+          }}
         />
-        <small>Linear → Settings → Security &amp; access → Personal API keys.</small>
-      </label>
+        <small>Flux lit GitHub avec ce compte, sans changer celui de ton terminal.</small>
+      </div>
 
-      <label>
-        Adresse iCal secrète de ton agenda
-        <input
-          type="password"
-          autoComplete="off"
-          placeholder={settings.hasCalendarUrl ? 'Enregistrée' : 'https://calendar.google.com/…/basic.ics'}
-          {...field('calendarUrl')}
-        />
-        <small>Google Agenda → Paramètres de ton agenda → Adresse secrète au format iCal.</small>
-      </label>
+      <section className="field trackers">
+        <span>Gestion de projet</span>
+        {trackers.length === 0 && (
+          <small>Aucun outil : Flux ne suit que tes PR GitHub et tes notes.</small>
+        )}
+        {trackers.map(name => (
+          <div className="tracker-card" key={name}>
+            <header>
+              <TrackerBadge name={name} />
+              <span className="tracker-name">
+                <strong>{trackerInfo(name).label}</strong>
+                <small>{TRACKER_HINT[name]}</small>
+              </span>
+              <button
+                type="button"
+                className="round glass small"
+                aria-label={`Retirer ${trackerInfo(name).label}`}
+                title="Retirer"
+                onClick={() => setTrackers(trackers.filter(entry => entry !== name))}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </header>
 
-      <label>
-        Heure du daily
-        <input
-          type="time"
-          value={patch.dailyTime ?? settings.dailyTime}
-          onChange={field('dailyTime').onChange}
-        />
-      </label>
+            {name === 'jira' && (
+              <>
+                <InputShell icon={Globe}>
+                  <input
+                    type="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="https://entreprise.atlassian.net"
+                    value={patch.jiraSite ?? settings.jiraSite}
+                    onChange={field('jiraSite').onChange}
+                  />
+                </InputShell>
+                <InputShell icon={AtSign}>
+                  <input
+                    type="email"
+                    autoComplete="off"
+                    placeholder="prenom.nom@entreprise.fr"
+                    value={patch.jiraEmail ?? settings.jiraEmail}
+                    onChange={field('jiraEmail').onChange}
+                  />
+                </InputShell>
+                <InputShell icon={KeyRound} stored={settings.hasJiraToken && !patch.jiraToken}>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={settings.hasJiraToken ? 'Remplacer le jeton' : 'Jeton API'}
+                    {...field('jiraToken')}
+                  />
+                </InputShell>
+                <small>Jeton : id.atlassian.com → Sécurité → Jetons d’API.</small>
+              </>
+            )}
 
-      <label>
-        Raccourci de capture
-        <input
-          value={patch.captureShortcut ?? settings.captureShortcut}
-          onChange={field('captureShortcut').onChange}
-        />
-      </label>
+            {name === 'linear' && (
+              <>
+                <InputShell icon={KeyRound} stored={settings.hasLinearKey && !patch.linearKey}>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    placeholder={settings.hasLinearKey ? 'Remplacer la clef' : 'lin_api_…'}
+                    {...field('linearKey')}
+                  />
+                </InputShell>
+                <small>Linear → Settings → Security &amp; access → Personal API keys.</small>
+              </>
+            )}
+          </div>
+        ))}
+        <AddTrackerMenu chosen={trackers} onAdd={name => setTrackers([...trackers, name])} />
+      </section>
+
+      <section className="field trackers">
+        <span>Agenda</span>
+        {calendar ? (
+          <div className="tracker-card">
+            <header>
+              <TrackerBadge name={calendar} />
+              <span className="tracker-name">
+                <strong>{calendarInfo(calendar).label}</strong>
+                <small>Flux se tait pendant tes réunions et affiche la suivante</small>
+              </span>
+              <button
+                type="button"
+                className="round glass small"
+                aria-label={`Retirer ${calendarInfo(calendar).label}`}
+                title="Retirer"
+                onClick={() => setPatch(current => ({ ...current, calendar: 'none' }))}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </header>
+            <InputShell icon={CalendarDays} stored={settings.hasCalendarUrl && !patch.calendarUrl}>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  settings.hasCalendarUrl ? 'Remplacer le lien iCal' : calendarInfo(calendar).placeholder
+                }
+                {...field('calendarUrl')}
+              />
+            </InputShell>
+            <small>{calendarInfo(calendar).help}</small>
+          </div>
+        ) : (
+          <>
+            <small>Aucun agenda : Flux ne connaît pas tes réunions.</small>
+            <AddCalendarMenu onAdd={name => setPatch(current => ({ ...current, calendar: name }))} />
+          </>
+        )}
+      </section>
+
+      <div className="settings-row">
+        <div className="field">
+          <span>Heure du daily</span>
+          <TimePicker
+            value={patch.dailyTime ?? settings.dailyTime}
+            onChange={dailyTime => setPatch(current => ({ ...current, dailyTime }))}
+          />
+        </div>
+
+        <label>
+          Raccourci de capture
+          <InputShell icon={Keyboard}>
+            <input
+              value={patch.captureShortcut ?? settings.captureShortcut}
+              onChange={field('captureShortcut').onChange}
+            />
+          </InputShell>
+        </label>
+      </div>
 
       <footer>
         <button
@@ -98,8 +264,7 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
         <button type="button" className="pill glass small" onClick={onReplay}>
           Revoir l’accueil
         </button>
-        {saved && <span role="status">Enregistré</span>}
-        <button type="submit" className="pill solid small">
+        <button type="submit" className="pill solid small" disabled={saving}>
           Enregistrer
         </button>
       </footer>

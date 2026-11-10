@@ -1,8 +1,11 @@
+import type { CalendarName } from './calendars'
+import type { TrackerName } from './trackers'
+
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
 export type Ball = 'me' | 'others' | 'agent' | 'dormant'
 export type TopicStatus = 'inbox' | 'open' | 'done'
 export type ThreadStatus = 'busy' | 'idle' | 'closed' | 'pending'
-export type SourceName = 'github' | 'linear' | 'agents' | 'calendar'
+export type SourceName = 'github' | 'linear' | 'jira' | 'agents' | 'calendar'
 
 export type ActionKind =
   | 'submit-review'
@@ -93,6 +96,8 @@ export interface SourceHealth {
   ok: boolean
   at: string | null
   error?: string
+  // Not configured yet: the only case that asks you to connect it
+  missing?: boolean
 }
 
 export interface Meeting {
@@ -115,15 +120,25 @@ export interface MergedPr {
   mergedAt: string
 }
 
+export interface WorkspaceInfo {
+  id: string
+  label: string
+  short: string
+}
+
 export interface AppState {
   generatedAt: string
+  // Product Flux currently shows; null when no workspace is configured
+  workspace: string | null
+  workspaces: WorkspaceInfo[]
   queue: TopicView[]
   active: TopicView[]
   waiting: TopicView[]
   dormant: TopicView[]
   notes: TopicView[]
   loose: Item[]
-  sources: Record<SourceName, SourceHealth>
+  // Only the sources in use: a tool you did not choose never asks to be connected
+  sources: Partial<Record<SourceName, SourceHealth>>
   meeting: { current: Meeting | null; next: Meeting | null }
   daily: DailyState
 }
@@ -135,7 +150,18 @@ export interface Settings {
   workdayEnd: number
   hasLinearKey: boolean
   hasCalendarUrl: boolean
+  hasJiraToken: boolean
+  jiraEmail: string
+  // Atlassian site, e.g. https://acme.atlassian.net; empty when not configured
+  jiraSite: string
+  // Project tools you chose, in the order you added them
+  trackers: TrackerName[]
+  // Calendar whose iCal link Flux reads; null when you use none
+  calendar: CalendarName | null
   onboarded: boolean
+  // gh login Flux reads GitHub as; null follows gh's active account
+  githubAccount: string | null
+  workspace: string | null
 }
 
 export interface SettingsPatch {
@@ -143,7 +169,28 @@ export interface SettingsPatch {
   captureShortcut?: string
   linearKey?: string
   calendarUrl?: string
+  jiraEmail?: string
+  jiraToken?: string
+  jiraSite?: string
+  trackers?: TrackerName[]
+  calendar?: CalendarName | 'none'
+  workspace?: string
   onboarded?: boolean
+  githubAccount?: string | null
+}
+
+export interface GithubAccounts {
+  host: string
+  // Logins gh is signed in with on that host, gh's active one first
+  logins: string[]
+  active: string | null
+  profiles: Record<string, GithubProfile>
+}
+
+export interface GithubProfile {
+  name: string | null
+  // Data URL, so the renderer never loads remote images
+  avatar: string | null
 }
 
 export interface CheckResult {
@@ -156,6 +203,7 @@ export interface FluxApi {
   onState(listener: (state: AppState) => void): () => void
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void
+  onRefreshShortcut(listener: () => void): () => void
   refresh(): Promise<void>
   createNote(text: string): Promise<void>
   openCapture(): Promise<void>
@@ -172,7 +220,9 @@ export interface FluxApi {
   saveSettings(patch: SettingsPatch): Promise<void>
   testNotification(): Promise<void>
   checkGithub(): Promise<CheckResult>
+  githubAccounts(): Promise<GithubAccounts>
   checkLinearKey(key: string): Promise<CheckResult>
+  checkJira(site: string, email: string, token: string): Promise<CheckResult>
   checkCalendarUrl(url: string): Promise<CheckResult>
   runDaily(): Promise<void>
   readDaily(): Promise<string | null>

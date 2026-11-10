@@ -1,4 +1,4 @@
-import { CalendarClock, Plug, Plus, Settings, Waves } from 'lucide-react'
+import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AppState, SourceName, TopicView } from '../../shared/types'
 import { DailyView } from './DailyView'
@@ -9,6 +9,7 @@ import { Onboarding } from './Onboarding'
 import { Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { SettingsPanel } from './SettingsPanel'
+import { Toast, type ToastMessage } from './Toast'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
 
@@ -20,6 +21,7 @@ const DAILY_READ_KEY = 'flux.dailyRead'
 const SOURCE_LABEL: Record<SourceName, string> = {
   github: 'GitHub',
   linear: 'Linear',
+  jira: 'Jira',
   agents: 'Agents',
   calendar: 'Agenda',
 }
@@ -65,9 +67,42 @@ export function App() {
   const [tab, setTab] = useState<Tab>('queue')
   const [selected, setSelected] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const showToast = (text: string, tone: ToastMessage['tone'] = 'ok') =>
+    setToast({ id: Date.now(), text, tone })
   const [readDate, setReadDate] = useState(dailyRead)
   const [onboarding, setOnboarding] = useState(false)
   const [sceneTint, setSceneTint] = useState<RankStyle | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const refresh = () => {
+    if (refreshing) return
+    setRefreshing(true)
+    // Spins at least one turn, so a fast refresh still reads as done
+    const minimum = new Promise(resolve => setTimeout(resolve, 700))
+    Promise.all([window.flux.refresh(), minimum])
+      .catch(error => showToast(`Rafraîchissement impossible : ${(error as Error).message}`, 'error'))
+      .finally(() => setRefreshing(false))
+  }
+
+  useEffect(() => window.flux.onRefreshShortcut(refresh))
+
+  // Chosen workspace until the main process confirms it with a new state
+  const [switching, setSwitching] = useState<string | null>(null)
+
+  const switchWorkspace = (id: string) => {
+    if (id === (switching ?? state?.workspace)) return
+    setSwitching(id)
+    setSelected(null)
+    window.flux.saveSettings({ workspace: id }).catch(error => {
+      setSwitching(null)
+      showToast(`Changement d’espace impossible : ${(error as Error).message}`, 'error')
+    })
+  }
+
+  useEffect(() => {
+    if (switching && state?.workspace === switching) setSwitching(null)
+  }, [state?.workspace])
 
   useEffect(() => {
     void window.flux.getSettings().then(settings => setOnboarding(!settings.onboarded))
@@ -157,10 +192,11 @@ export function App() {
     { key: 'daily', label: 'Daily', count: 0 },
   ]
   const failing = (Object.keys(state.sources) as SourceName[]).filter(
-    name => !state.sources[name].ok,
+    name => !state.sources[name]?.ok,
   )
-  const toConnect = failing.filter(name => !state.sources[name].at)
-  const offline = failing.filter(name => state.sources[name].at)
+  // Before its first answer a source is just loading: only an unconfigured one asks to connect
+  const toConnect = failing.filter(name => state.sources[name]?.missing)
+  const offline = failing.filter(name => state.sources[name]?.error && !state.sources[name]?.missing)
   const meeting = state.meeting.current
     ? `En réunion : ${state.meeting.current.title}`
     : state.meeting.next
@@ -181,6 +217,21 @@ export function App() {
             <Waves size={16} strokeWidth={2.4} aria-hidden="true" />
           </span>
           Flux
+          {state.workspaces.length > 1 && (
+            <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
+              {state.workspaces.map(workspace => (
+                <button
+                  type="button"
+                  key={workspace.id}
+                  title={workspace.label}
+                  aria-current={(switching ?? state.workspace) === workspace.id ? 'page' : undefined}
+                  onClick={() => switchWorkspace(workspace.id)}
+                >
+                  {workspace.short}
+                </button>
+              ))}
+            </nav>
+          )}
         </div>
 
         <nav className="tabs glass lens" aria-label="Vues">
@@ -229,6 +280,16 @@ export function App() {
           <button
             type="button"
             className="round glass"
+            aria-label="Rafraîchir"
+            title="Rafraîchir (⌘R)"
+            disabled={refreshing}
+            onClick={refresh}
+          >
+            <RefreshCw size={16} aria-hidden="true" className={refreshing ? 'spin' : undefined} />
+          </button>
+          <button
+            type="button"
+            className="round glass"
             aria-label="Réglages"
             title="Réglages"
             onClick={() => setSettingsOpen(open => !open)}
@@ -251,12 +312,14 @@ export function App() {
             ) : (
               <section className="hero">
                 <h1 className="hero-empty">{emptyTitle(listTab, state.loose.length)}</h1>
-                <div className="hero-actions">
-                  <button type="button" className="pill solid" onClick={() => void window.flux.openCapture()}>
-                    Écrire une note
-                    <Plus size={17} aria-hidden="true" />
-                  </button>
-                </div>
+                {(listTab === 'queue' || listTab === 'notes') && (
+                  <div className="hero-actions">
+                    <button type="button" className="pill solid" onClick={() => void window.flux.openCapture()}>
+                      Écrire une note
+                      <Plus size={17} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
               </section>
             )}
           </main>
@@ -278,8 +341,15 @@ export function App() {
             setSettingsOpen(false)
             setOnboarding(true)
           }}
+          onSaved={() => {
+            setSettingsOpen(false)
+            showToast('Réglages enregistrés')
+          }}
+          onError={message => showToast(message, 'error')}
         />
       )}
+
+      {toast && <Toast key={toast.id} toast={toast} onDone={() => setToast(null)} />}
 
       <svg className="filters" aria-hidden="true">
         <filter id="lens" x="-10%" y="-10%" width="120%" height="120%">

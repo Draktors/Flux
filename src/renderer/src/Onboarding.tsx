@@ -9,16 +9,20 @@ import {
   Waves,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
+import { CALENDARS, calendarInfo, type CalendarName } from '../../shared/calendars'
+import { TRACKERS, type TrackerName } from '../../shared/trackers'
 import type { CheckResult, Rank, Settings } from '../../shared/types'
 
 import { rankStyle, tint, type RankStyle } from './rankStyle'
+import { TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 
 type SecretKey = 'linearKey' | 'calendarUrl'
+type StepKey = 'welcome' | 'github' | 'tools' | 'jira' | 'linear' | 'calendar' | 'done'
 
 interface Step {
-  key: 'welcome' | 'github' | 'linear' | 'calendar' | 'done'
+  key: StepKey
   rank: Rank
   icon: LucideIcon
   eyebrow: string
@@ -28,28 +32,45 @@ interface Step {
   secret?: { name: SecretKey; placeholder: string; saved: (settings: Settings) => boolean }
 }
 
-const STEPS: Step[] = [
-  {
+// Steps that connect a source, numbered in the eyebrow
+const CONNECTIONS: StepKey[] = ['github', 'jira', 'linear', 'calendar']
+
+const ALL_STEPS: Record<StepKey, Omit<Step, 'eyebrow'> & { eyebrow?: string }> = {
+  welcome: {
     key: 'welcome',
     rank: 6,
     icon: Waves,
     eyebrow: 'Bienvenue',
     title: 'Flux tire ton travail vers toi.',
-    text: 'Trois connexions et ta file se remplit seule : les PR depuis GitHub, les tickets depuis Linear, les réunions depuis ton agenda. Tout reste sur ce Mac.',
+    text: 'Quelques connexions et ta file se remplit seule : les PR depuis GitHub, les tickets depuis ton outil de gestion de projet, les réunions depuis ton agenda. Tout reste sur ce Mac.',
   },
-  {
+  github: {
     key: 'github',
     rank: 2,
     icon: GitPullRequest,
-    eyebrow: 'Connexion 1 sur 3',
     title: 'GitHub',
     text: 'Flux lit tes PR avec la CLI gh déjà connectée sur ce Mac : aucune clef à saisir ici.',
   },
-  {
+  tools: {
+    key: 'tools',
+    rank: 5,
+    icon: SquareKanban,
+    eyebrow: 'Gestion de projet',
+    title: 'Où vivent tes tickets ?',
+    text: 'Choisis les outils que ton équipe utilise. Flux ne demandera que leurs clefs, et tu pourras en ajouter plus tard dans les réglages.',
+  },
+  jira: {
+    key: 'jira',
+    rank: 5,
+    icon: SquareKanban,
+    title: 'Jira',
+    text: 'Ton site Atlassian, ton e-mail et un jeton API pour suivre les tickets qui te sont assignés.',
+    help: 'Jeton : id.atlassian.com → Sécurité → Jetons d’API.',
+  },
+  linear: {
     key: 'linear',
     rank: 5,
     icon: SquareKanban,
-    eyebrow: 'Connexion 2 sur 3',
     title: 'Linear',
     text: 'Une clef personnelle pour suivre les tickets cités par tes sujets et tes mentions.',
     help: 'Linear → Settings → Security & access → Personal API keys.',
@@ -59,29 +80,46 @@ const STEPS: Step[] = [
       saved: settings => settings.hasLinearKey,
     },
   },
-  {
+  calendar: {
     key: 'calendar',
     rank: 3,
     icon: CalendarDays,
-    eyebrow: 'Connexion 3 sur 3',
     title: 'Agenda',
-    text: 'L’adresse iCal secrète de ton agenda : Flux se tait pendant tes réunions et te montre la suivante.',
-    help: 'Google Agenda → Paramètres de ton agenda → Adresse secrète au format iCal.',
+    text: 'Flux se tait pendant tes réunions et te montre la suivante. Choisis ton agenda, puis colle son lien iCal secret.',
     secret: {
       name: 'calendarUrl',
-      placeholder: 'https://calendar.google.com/…/basic.ics',
+      placeholder: '',
       saved: settings => settings.hasCalendarUrl,
     },
   },
-  {
+  done: {
     key: 'done',
     rank: 4,
     icon: Check,
     eyebrow: 'C’est prêt',
     title: 'Ta file t’attend.',
-    text: 'Tu pourras changer ces clefs plus tard dans les réglages.',
+    text: 'Tu pourras changer ces clefs et tes outils plus tard dans les réglages.',
   },
-]
+}
+
+function buildSteps(trackers: TrackerName[]): Step[] {
+  const keys: StepKey[] = [
+    'welcome',
+    'github',
+    'tools',
+    ...(['jira', 'linear'] as const).filter(name => trackers.includes(name)),
+    'calendar',
+    'done',
+  ]
+  const connections = keys.filter(key => CONNECTIONS.includes(key))
+  return keys.map(key => {
+    const step = ALL_STEPS[key]
+    const position = connections.indexOf(key)
+    const eyebrow =
+      step.eyebrow ?? `Connexion ${position + 1} sur ${connections.length}`
+    return { ...step, eyebrow }
+  })
+}
 
 type Status = { state: 'idle' } | { state: 'checking' } | ({ state: 'done' } & CheckResult)
 
@@ -112,18 +150,33 @@ function StatusLine({ status }: { status: Status }) {
   )
 }
 
+interface JiraDraft {
+  site: string
+  email: string
+  token: string
+}
+
 export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void; onDone(): void }) {
   const [index, setIndex] = useState(0)
   const [settings, setSettings] = useState<Settings | null>(null)
+  const [trackers, setTrackers] = useState<TrackerName[]>([])
+  const [calendar, setCalendar] = useState<CalendarName | null>(null)
   const [value, setValue] = useState('')
+  const [jira, setJira] = useState<JiraDraft>({ site: '', email: '', token: '' })
   const [status, setStatus] = useState<Status>({ state: 'idle' })
   const [github, setGithub] = useState<Status>({ state: 'idle' })
   const input = useRef<HTMLInputElement>(null)
-  const step = STEPS[index]
+  const steps = useMemo(() => buildSteps(trackers), [trackers])
+  const step = steps[Math.min(index, steps.length - 1)]
   const style = rankStyle(step.rank)
 
   useEffect(() => {
-    void window.flux.getSettings().then(setSettings)
+    void window.flux.getSettings().then(loaded => {
+      setSettings(loaded)
+      setTrackers(loaded.trackers)
+      setCalendar(loaded.calendar)
+      setJira({ site: loaded.jiraSite, email: loaded.jiraEmail, token: '' })
+    })
   }, [])
 
   useEffect(() => {
@@ -139,7 +192,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     setGithub({ state: 'done', ...(await window.flux.checkGithub()) })
   }
 
-  const next = () => setIndex(current => Math.min(current + 1, STEPS.length - 1))
+  const next = () => setIndex(current => Math.min(current + 1, steps.length - 1))
   const back = () => setIndex(current => Math.max(current - 1, 0))
 
   const finish = async () => {
@@ -147,39 +200,90 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     onDone()
   }
 
+  const reload = async () => setSettings(await window.flux.getSettings())
+
   const saveSecret = async (name: SecretKey) => {
     setStatus({ state: 'checking' })
     const result = await CHECKS[name](value)
     setStatus({ state: 'done', ...result })
     if (!result.ok) return
-    await window.flux.saveSettings({ [name]: value.trim() })
-    setSettings(await window.flux.getSettings())
+    await window.flux.saveSettings(
+      name === 'calendarUrl' && calendar
+        ? { calendarUrl: value.trim(), calendar }
+        : { [name]: value.trim() },
+    )
+    await reload()
     setValue('')
   }
+
+  const jiraSaved = Boolean(settings?.hasJiraToken && settings.jiraSite && settings.jiraEmail)
+  const jiraTyped = Boolean(jira.token.trim())
+
+  const saveJira = async () => {
+    setStatus({ state: 'checking' })
+    const result = await window.flux.checkJira(jira.site, jira.email, jira.token)
+    setStatus({ state: 'done', ...result })
+    if (!result.ok) return
+    await window.flux.saveSettings({
+      jiraSite: jira.site.trim(),
+      jiraEmail: jira.email.trim(),
+      jiraToken: jira.token.trim(),
+    })
+    await reload()
+    setJira(current => ({ ...current, token: '' }))
+  }
+
+  const verified = status.state === 'done' && status.ok
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (step.key === 'done') return void finish()
-    if (step.secret && value.trim() && !(status.state === 'done' && status.ok)) {
-      return void saveSecret(step.secret.name)
+    if (step.key === 'tools') {
+      void window.flux.saveSettings({ trackers }).then(reload)
+      return next()
     }
+    if (step.key === 'calendar' && !calendar) {
+      void window.flux.saveSettings({ calendar: 'none' }).then(reload)
+      return next()
+    }
+    if (step.key === 'jira' && jiraTyped && !verified) return void saveJira()
+    if (secret && value.trim() && !verified) return void saveSecret(secret.name)
     next()
   }
 
+  const toggle = (name: TrackerName) =>
+    setTrackers(current =>
+      current.includes(name) ? current.filter(entry => entry !== name) : [...current, name],
+    )
+
   const Icon = step.icon
-  const saved = step.secret && settings ? step.secret.saved(settings) : false
-  const verified = status.state === 'done' && status.ok
+  // The calendar step asks for its link only once a calendar is chosen, with that calendar's help
+  const secret =
+    step.key === 'calendar'
+      ? calendar
+        ? { ...step.secret!, placeholder: calendarInfo(calendar).placeholder }
+        : undefined
+      : step.secret
+  const help = step.key === 'calendar' && calendar ? calendarInfo(calendar).help : step.help
+  const saved = secret && settings ? secret.saved(settings) : false
+  const pending = (secret && value.trim()) || (step.key === 'jira' && jiraTyped)
   const primary = (() => {
     if (step.key === 'welcome') return 'Commencer'
     if (step.key === 'done') return 'Ouvrir Flux'
-    if (step.secret && value.trim() && !verified) return 'Vérifier et enregistrer'
+    if (step.key === 'tools' && trackers.length === 0) return 'Aucun pour l’instant'
+    if (step.key === 'calendar' && !calendar) return 'Pas d’agenda'
+    if (pending && !verified) return 'Vérifier et enregistrer'
     return 'Continuer'
   })()
+  const canLater = (secret && !saved && !verified) || (step.key === 'jira' && !jiraSaved && !verified)
   const summary = settings
     ? [
         { label: 'GitHub', ok: github.state === 'done' && github.ok },
-        { label: 'Linear', ok: settings.hasLinearKey },
-        { label: 'Agenda', ok: settings.hasCalendarUrl },
+        ...trackers.map(name => ({
+          label: trackerInfo(name).label,
+          ok: name === 'jira' ? jiraSaved : settings.hasLinearKey,
+        })),
+        ...(calendar ? [{ label: calendarInfo(calendar).label, ok: settings.hasCalendarUrl }] : []),
       ]
     : []
 
@@ -194,8 +298,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
       </button>
 
       <form className="onboarding-card glass-dark" onSubmit={submit}>
-        <ol className="onboarding-dots" aria-label={`Étape ${index + 1} sur ${STEPS.length}`}>
-          {STEPS.map((entry, position) => (
+        <ol className="onboarding-dots" aria-label={`Étape ${index + 1} sur ${steps.length}`}>
+          {steps.map((entry, position) => (
             <li
               key={entry.key}
               aria-current={position === index ? 'step' : undefined}
@@ -206,7 +310,11 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
 
         <div className="onboarding-step" key={step.key}>
           <span className="onboarding-icon">
-            <Icon size={26} strokeWidth={2.2} aria-hidden="true" />
+            {step.key === 'jira' || step.key === 'linear' ? (
+              <TrackerBadge name={step.key} size={30} />
+            ) : (
+              <Icon size={26} strokeWidth={2.2} aria-hidden="true" />
+            )}
           </span>
           <p className="onboarding-eyebrow">{step.eyebrow}</p>
           <h1>{step.title}</h1>
@@ -227,7 +335,98 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
             </>
           )}
 
-          {step.secret && (
+          {step.key === 'tools' && (
+            <div className="onboarding-tools" role="group" aria-label="Outils de gestion de projet">
+              {TRACKERS.map(tracker => {
+                const on = trackers.includes(tracker.id)
+                return (
+                  <button
+                    type="button"
+                    key={tracker.id}
+                    className="onboarding-tool"
+                    aria-pressed={on}
+                    disabled={tracker.soon}
+                    onClick={() => toggle(tracker.id)}
+                  >
+                    <TrackerBadge name={tracker.id} size={32} />
+                    <strong>{tracker.label}</strong>
+                    <small>{tracker.soon ? 'Bientôt' : TRACKER_HINT[tracker.id]}</small>
+                    {on && <Check size={15} aria-hidden="true" className="onboarding-tool-check" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {step.key === 'jira' && (
+            <div className="onboarding-field">
+              <input
+                ref={input}
+                type="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="https://entreprise.atlassian.net"
+                value={jira.site}
+                onChange={event => {
+                  setJira(current => ({ ...current, site: event.target.value }))
+                  setStatus({ state: 'idle' })
+                }}
+              />
+              <input
+                type="email"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="prenom.nom@entreprise.fr"
+                value={jira.email}
+                onChange={event => {
+                  setJira(current => ({ ...current, email: event.target.value }))
+                  setStatus({ state: 'idle' })
+                }}
+              />
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={
+                  settings?.hasJiraToken
+                    ? 'Jeton déjà enregistré, colle-en un nouveau pour le remplacer'
+                    : 'Jeton API'
+                }
+                value={jira.token}
+                onChange={event => {
+                  setJira(current => ({ ...current, token: event.target.value }))
+                  setStatus({ state: 'idle' })
+                }}
+              />
+              <small>{step.help}</small>
+            </div>
+          )}
+
+          {step.key === 'calendar' && (
+            <div className="onboarding-tools compact" role="group" aria-label="Agenda">
+              {CALENDARS.map(entry => {
+                const on = calendar === entry.id
+                return (
+                  <button
+                    type="button"
+                    key={entry.id}
+                    className="onboarding-tool"
+                    aria-pressed={on}
+                    onClick={() => {
+                      setCalendar(on ? null : entry.id)
+                      setStatus({ state: 'idle' })
+                    }}
+                  >
+                    <TrackerBadge name={entry.id} size={28} />
+                    <strong>{entry.label}</strong>
+                    {on && <Check size={15} aria-hidden="true" className="onboarding-tool-check" />}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {secret && (
             <label className="onboarding-field">
               <input
                 ref={input}
@@ -238,17 +437,17 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
                 placeholder={
                   saved
                     ? 'Déjà enregistrée, colle une nouvelle valeur pour la remplacer'
-                    : step.secret.placeholder
+                    : secret.placeholder
                 }
                 onChange={event => {
                   setValue(event.target.value)
                   setStatus({ state: 'idle' })
                 }}
               />
-              {step.help && <small>{step.help}</small>}
+              {help && <small>{help}</small>}
             </label>
           )}
-          {step.secret && <StatusLine status={status} />}
+          {(secret || step.key === 'jira') && <StatusLine status={status} />}
 
           {step.key === 'done' && (
             <ul className="onboarding-summary">
@@ -273,7 +472,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
               Retour
             </button>
           )}
-          {step.secret && !saved && !verified && (
+          {canLater && (
             <button type="button" className="onboarding-later" onClick={next}>
               Plus tard
             </button>

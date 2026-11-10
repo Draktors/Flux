@@ -2,9 +2,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { safeStorage } from 'electron'
 import type { Settings, SettingsPatch } from '../../shared/types'
+import type { CalendarName } from '../../shared/calendars'
+import { AVAILABLE_TRACKERS, type TrackerName } from '../../shared/trackers'
+import { CONFIG } from '../config'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
+import { resolveWorkspace } from '../workspaces'
 
-type Secret = 'linearKey' | 'calendarUrl'
+type Secret = 'linearKey' | 'calendarUrl' | 'jiraToken'
 
 interface Stored {
   dailyTime: string
@@ -12,6 +16,15 @@ interface Stored {
   workdayStart: number
   workdayEnd: number
   onboarded: boolean
+  githubAccount: string | null
+  // Workspace id Flux shows; null picks the first configured one
+  workspace: string | null
+  jiraEmail: string
+  jiraSite: string
+  // null until chosen: derived from the keys already saved
+  trackers: TrackerName[] | null
+  // null until chosen: Google when an iCal link is already saved, as before
+  calendar: CalendarName | 'none' | null
 }
 
 const DEFAULTS: Stored = {
@@ -20,6 +33,12 @@ const DEFAULTS: Stored = {
   workdayStart: 9,
   workdayEnd: 19,
   onboarded: false,
+  githubAccount: null,
+  workspace: null,
+  jiraEmail: '',
+  jiraSite: '',
+  trackers: null,
+  calendar: null,
 }
 
 function readJson<T>(path: string, fallback: T): T {
@@ -50,21 +69,51 @@ export class SettingsStore {
     return safeStorage.decryptString(Buffer.from(encoded, 'base64'))
   }
 
+  // The site typed in the settings wins over the one in config.json
+  jiraSite(): string {
+    return (this.stored.jiraSite || CONFIG.jira.site).replace(/\/+$/, '')
+  }
+
+  trackers(): TrackerName[] {
+    const chosen = this.stored.trackers
+    if (chosen) return chosen.filter(name => AVAILABLE_TRACKERS.includes(name))
+    const derived: TrackerName[] = []
+    if (this.secrets.jiraToken || CONFIG.jira.site) derived.push('jira')
+    if (this.secrets.linearKey) derived.push('linear')
+    return derived
+  }
+
+  calendar(): CalendarName | null {
+    const chosen = this.stored.calendar
+    if (chosen === 'none') return null
+    return chosen ?? (this.secrets.calendarUrl ? 'google' : null)
+  }
+
+  uses(tracker: TrackerName): boolean {
+    return this.trackers().includes(tracker)
+  }
+
   public(): Settings {
     return {
       ...this.stored,
       hasLinearKey: Boolean(this.secrets.linearKey),
       hasCalendarUrl: Boolean(this.secrets.calendarUrl),
+      hasJiraToken: Boolean(this.secrets.jiraToken),
+      jiraSite: this.jiraSite(),
+      trackers: this.trackers(),
+      calendar: this.calendar(),
+      workspace: resolveWorkspace(CONFIG.workspaces, this.stored.workspace)?.id ?? null,
     }
   }
 
   apply(patch: SettingsPatch): void {
-    const { linearKey, calendarUrl, ...plain } = patch
+    const { linearKey, calendarUrl, jiraToken, ...plain } = patch
     this.stored = { ...this.stored, ...plain }
     writeJson(SETTINGS_FILE, this.stored)
     const secrets: Array<[Secret, string | undefined]> = [
       ['linearKey', linearKey],
       ['calendarUrl', calendarUrl],
+      ['jiraToken', jiraToken],
     ]
     for (const [name, value] of secrets) {
       if (value === undefined) continue

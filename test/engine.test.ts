@@ -395,6 +395,20 @@ describe('notifications', () => {
     expect(second.notifications).toHaveLength(1)
   })
 
+  it('ne renotifie pas un signal ancien resté dans la file', () => {
+    const queue = [view('a', 'a:1', '2026-09-01T09:00:00Z')]
+    const first = decide(ready, queue, during('2026-11-06T11:00:00+01:00'))
+    expect(first.notifications).toHaveLength(1)
+    const next = decide(first.state, queue, during('2026-11-06T11:01:00+01:00'))
+    expect(next.notifications).toEqual([])
+  })
+
+  it('oublie après 30 jours un signal sorti de la file', () => {
+    const first = decide(ready, [view('a', 'a:1', '2026-09-01T09:00:00Z')], during('2026-11-06T11:00:00+01:00'))
+    const gone = decide(first.state, [], during('2026-11-06T11:01:00+01:00'))
+    expect(gone.state.seen['a:1']).toBeUndefined()
+  })
+
   it('garde tout pendant une réunion puis groupe à la fin', () => {
     const queue = [view('a', 'a:1', '2026-11-06T09:00:00Z'), view('b', 'b:1', '2026-11-06T09:30:00Z')]
     const meeting = { title: 'Point', start: '2026-11-06T09:30:00Z', end: '2026-11-06T10:30:00Z' }

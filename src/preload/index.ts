@@ -3,6 +3,7 @@ import type { AppState, FluxApi, SourceProgress } from '../shared/types'
 
 const api: FluxApi = {
   getState: () => ipcRenderer.invoke('flux:get-state'),
+  refreshAll: () => ipcRenderer.invoke('flux:refresh-all'),
   onState(listener) {
     const handler = (_event: unknown, state: AppState) => listener(state)
     ipcRenderer.on('flux:state', handler)

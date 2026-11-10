@@ -1,9 +1,9 @@
-import { CalendarClock, Plug, Plus, Settings, Waves } from 'lucide-react'
+import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import { Boot, type BootProgress } from './Boot'
 import { DailyView } from './DailyView'
-import { until } from './format'
+import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
 import { Inspector } from './Inspector'
 import { Onboarding } from './Onboarding'
@@ -75,6 +75,7 @@ export function App() {
   const [settings, setSettings] = useState<FluxSettings | null>(null)
   const [progress, setProgress] = useState<BootProgress>({})
   const [boot, setBoot] = useState<'playing' | 'leaving' | 'done'>('playing')
+  const [refreshing, setRefreshing] = useState(false)
   const bootStart = useRef(performance.now())
 
   useEffect(() => {
@@ -282,7 +283,23 @@ export function App() {
                 Connecter {toConnect.map(name => SOURCE_LABEL[name]).join(', ')}
               </button>
             )}
-            <button type="button" className="pill glass" onClick={() => void window.flux.openCapture()}>
+            <button
+            type="button"
+            className="round glass refresh"
+            aria-label="Tout actualiser"
+            aria-busy={refreshing}
+            disabled={refreshing}
+            title={
+              refreshing ? 'Actualisation…' : `Tout actualiser · synchro de ${clock(state.generatedAt)}`
+            }
+            onClick={() => {
+              setRefreshing(true)
+              void window.flux.refreshAll().finally(() => setRefreshing(false))
+            }}
+          >
+            <RefreshCw size={17} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
+          </button>
+          <button type="button" className="pill glass" onClick={() => void window.flux.openCapture()}>
               Note
               <Plus size={16} aria-hidden="true" />
             </button>

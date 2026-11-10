@@ -173,6 +173,7 @@ function openNotificationSettings(): Promise<void> {
 }
 
 function notify(title: string, body: string, onClick: () => void): void {
+  console.log(`${new Date().toISOString()} notification : ${title} | ${body}`)
   const notification = new Notification({ title, body, silent: false })
   liveNotifications.add(notification)
   notification.on('failed', (_event, error) => {
@@ -202,6 +203,7 @@ function requireTopic(id: string): Topic {
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', () => flux.refresh())
+  ipcMain.handle('flux:refresh-all', () => flux.refreshAll())
   ipcMain.handle('flux:create-note', async (_event, text: string) => {
     if (text.trim()) await flux.addTopic(noteFromText(text, new Date()))
     captureWindow?.close()

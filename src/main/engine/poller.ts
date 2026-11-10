@@ -167,6 +167,13 @@ export class Flux {
     await this.tick()
   }
 
+  // Manual refresh: lets a tick in flight finish, then refetches every source, calendar included
+  async refreshAll(): Promise<void> {
+    while (this.ticking) await new Promise(resolve => setTimeout(resolve, 200))
+    this.tickCount = 0
+    await this.tick()
+  }
+
   async reloadSources(): Promise<void> {
     this.tickCount = 0
     await this.tick()

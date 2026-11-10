@@ -167,6 +167,8 @@ export type NotificationAccess =
 export interface FluxApi {
   getState(): Promise<AppState>
   onState(listener: (state: AppState) => void): () => void
+  // Refetches every source now and resolves once the new state is out
+  refreshAll(): Promise<void>
   onProgress(listener: (progress: SourceProgress) => void): () => void
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void

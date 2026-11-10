@@ -320,6 +320,11 @@ button.chip:hover {
   height: 40px;
 }
 
+.round.refresh:disabled {
+  cursor: progress;
+  transform: none;
+}
+
 .round.small {
   width: 32px;
   height: 32px;

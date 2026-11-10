@@ -6,6 +6,13 @@ import type { ActionKind } from "../shared/types";
 
 const HOME = homedir();
 
+// The daily skill, or the older slash command when only that exists
+function defaultDailyCommand(): string {
+  const skill = join(HOME, ".claude/skills/daily/SKILL.md");
+  const command = join(HOME, ".claude/commands/daily.md");
+  return existsSync(skill) || !existsSync(command) ? skill : command;
+}
+
 // One product you alternate on: its Jira projects and its GitHub repos
 export interface Workspace {
   id: string;
@@ -74,7 +81,7 @@ export const DEFAULT_CONFIG: FluxConfig = {
   paths: {
     vault: join(HOME, "Documents/Flux"),
     repos: join(HOME, "code"),
-    dailyCommand: join(HOME, ".claude/commands/daily.md"),
+    dailyCommand: defaultDailyCommand(),
   },
   daily: { allowedTools: [], disallowedTools: [] },
   prompts: {},

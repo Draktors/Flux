@@ -34,13 +34,11 @@ function holdsTime(event: CalendarEvent, owner: string | null): boolean {
   )
 }
 
-export function meetingsFromIcs(ics: string, now: Date): Meeting[] {
+// Every meeting that holds time between from and to, ended or not
+export function meetingsBetween(ics: string, from: Date, to: Date): Meeting[] {
   const owner = ownerOf(ics)
   const expander = new IcalExpander({ ics, maxIterations: 0, skipInvalidDates: true })
-  const { events, occurrences } = expander.between(
-    new Date(now.getTime() - LOOK_BACK_MS),
-    new Date(now.getTime() + LOOK_AHEAD_MS),
-  )
+  const { events, occurrences } = expander.between(from, to)
   return [
     ...events.map(event => ({ event, start: event.startDate, end: event.endDate })),
     ...occurrences.map(entry => ({ event: entry.item, start: entry.startDate, end: entry.endDate })),
@@ -51,8 +49,15 @@ export function meetingsFromIcs(ics: string, now: Date): Meeting[] {
       start: start.toJSDate().toISOString(),
       end: end.toJSDate().toISOString(),
     }))
-    .filter(meeting => meeting.end > now.toISOString())
     .sort((a, b) => a.start.localeCompare(b.start))
+}
+
+export function meetingsFromIcs(ics: string, now: Date): Meeting[] {
+  return meetingsBetween(
+    ics,
+    new Date(now.getTime() - LOOK_BACK_MS),
+    new Date(now.getTime() + LOOK_AHEAD_MS),
+  ).filter(meeting => meeting.end > now.toISOString())
 }
 
 // iCloud and Outlook hand out webcal:// links: the same feed over https
@@ -60,7 +65,7 @@ export function calendarUrl(url: string): string {
   return url.trim().replace(/^webcals?:\/\//i, 'https://')
 }
 
-export async function fetchCalendar(link: string): Promise<Meeting[]> {
+async function fetchIcs(link: string): Promise<string> {
   const url = calendarUrl(link)
   if (!url.startsWith('https://')) throw new Error('Adresse iCal invalide')
   const response = await fetch(url, { signal: AbortSignal.timeout(30_000) })
@@ -68,5 +73,13 @@ export async function fetchCalendar(link: string): Promise<Meeting[]> {
   // Outlook may start its feed with a byte-order mark
   const ics = (await response.text()).replace(/^\uFEFF/, '').trimStart()
   if (!ics.startsWith('BEGIN:VCALENDAR')) throw new Error('Adresse iCal invalide')
-  return meetingsFromIcs(ics, new Date())
+  return ics
+}
+
+export async function fetchCalendar(link: string): Promise<Meeting[]> {
+  return meetingsFromIcs(await fetchIcs(link), new Date())
+}
+
+export async function fetchCalendarBetween(link: string, from: Date, to: Date): Promise<Meeting[]> {
+  return meetingsBetween(await fetchIcs(link), from, to)
 }

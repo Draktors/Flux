@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { meetingsFromIcs } from '../src/main/sources/calendar'
+import { meetingsBetween, meetingsFromIcs } from '../src/main/sources/calendar'
 
 const ICS = readFileSync(join(__dirname, 'fixtures/calendar.ics'), 'utf8')
 const NOW = new Date('2026-11-06T08:00:00Z')
@@ -64,5 +64,13 @@ describe('agenda Outlook / Teams', () => {
 
   it('ignore les créneaux marqués disponibles', () => {
     expect(meetings.map(meeting => meeting.title)).not.toContain('Bloc libre')
+  })
+})
+
+describe('agenda sur une période', () => {
+  it('garde une réunion déjà terminée, pour le daily', () => {
+    const later = new Date('2026-11-06T09:00:00Z')
+    const day = meetingsBetween(ICS, new Date('2026-11-06T00:00:00Z'), later)
+    expect(day.map(meeting => meeting.title)).toContain('En cours')
   })
 })

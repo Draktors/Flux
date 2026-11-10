@@ -55,3 +55,14 @@ export function githubScope(workspace: Workspace | null, fallbackOwner: string):
   return { qualifiers: owner ? ` org:${owner}` : '', owner }
 }
 
+// Whether a GitHub repo (owner/name) belongs to that workspace
+export function ownsRepo(workspace: Workspace, remote: string, fallbackOwner = ''): boolean {
+  const [owner, name] = remote.toLowerCase().split('/')
+  const home = (workspace.github.owner || fallbackOwner).toLowerCase()
+  const repos = workspace.github.repos ?? []
+  if (repos.length === 0) return home !== '' && owner === home
+  return repos.some(repo => {
+    const [repoOwner, repoName] = repo.includes('/') ? repo.toLowerCase().split('/') : [home, repo.toLowerCase()]
+    return repoName === name && (repoOwner === '' || repoOwner === owner)
+  })
+}

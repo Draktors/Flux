@@ -16,10 +16,11 @@ import type { CallPatch } from '../shared/calls'
 import { Calls } from './calls/service'
 import { Flux } from './engine/poller'
 import { Daily } from './llm/daily'
+import { CONFIG } from './config'
 import { Triage } from './llm/triage'
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
 import { ARCHIVE_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
-import { fetchCalendar } from './sources/calendar'
+import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
 import { GITHUB_HOST, listGithubAccounts } from './sources/github'
 import { fetchJira } from './sources/jira'
 import { fetchLinear } from './sources/linear'
@@ -28,6 +29,7 @@ import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
 import { adoptThreads } from './threads/desktop'
 import { goToThread, launchThread } from './threads/launch'
+import { resolveWorkspace } from './workspaces'
 
 const THREAD_SETTLE_MS = 6_000
 
@@ -242,6 +244,8 @@ function registerIpc(): void {
     )
     // A workspace switch only redraws from the cache; nothing else needs reloading
     if (Object.keys(patch).every(key => key === 'workspace')) {
+      // The Daily tab follows the workspace: PP's note in PP, CC's in CC
+      daily.sync(new Date())
       void flux.switchWorkspace()
       return
     }
@@ -283,10 +287,16 @@ async function main(): Promise<void> {
   await app.whenReady()
   settings = new SettingsStore()
   const triage = new Triage()
-  daily = new Daily(
-    state => flux.setDaily(state),
-    () => notifyDaily(),
-  )
+  daily = new Daily({
+    publish: state => flux.setDaily(state),
+    onReady: () => notifyDaily(),
+    fetchMeetings: async (from, to) => {
+      const url = settings.secret('calendarUrl')
+      return url && settings.calendar() ? fetchCalendarBetween(url, from, to) : null
+    },
+    snapshot: (workspace, now) => flux.workspaceSnapshot(workspace, now),
+    activeWorkspace: () => resolveWorkspace(CONFIG.workspaces, settings.values.workspace),
+  })
   calls = new Calls(settings, state => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('flux:calls', state)
   })

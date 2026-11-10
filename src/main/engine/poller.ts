@@ -35,6 +35,7 @@ interface WorkspaceCache {
   github: GithubSnapshot | null
   // Account the snapshot was read as, so an account switch never shows the other account's queue
   githubAccount: string | null
+  githubAt?: string
   jira: Ticket[]
 }
 
@@ -316,6 +317,7 @@ export class Flux {
         .then(snapshot => {
           entry.github = snapshot
           entry.githubAccount = account
+          entry.githubAt = new Date().toISOString()
           if (visible) this.track('github')
         })
         .catch(error => {
@@ -352,8 +354,8 @@ export class Flux {
     }
   }
 
-  private items(now: Date): Item[] {
-    const { github, githubAccount, jira } = this.cache()
+  private items(now: Date, id: string | null = this.workspace()?.id ?? null): Item[] {
+    const { github, githubAccount, jira } = this.cache(id)
     // Data read as another GitHub account waits for the next fetch instead of showing
     const pullRequests =
       githubAccount === this.settings.values.githubAccount ? (github?.pullRequests ?? []) : []
@@ -441,6 +443,36 @@ export class Flux {
       this.notifyState = decision.state
       await writeFile(NOTIFY_FILE, JSON.stringify(decision.state))
       decision.notifications.forEach(notification => this.hooks.onNotify(notification))
+    }
+  }
+
+  // What the daily of one workspace sees: same shape as snapshot.json, computed on a copy of the
+  // topics so nothing is saved, and limited to that workspace
+  workspaceSnapshot(workspace: Workspace | null, now: Date) {
+    const id = workspace?.id ?? null
+    const result = reconcile(structuredClone(this.topics), this.items(now, id), this.sessions, now)
+    const views = result.views.filter(view => topicVisible(view.topic, workspace, CONFIG.workspaces))
+    const pick = (ball: TopicView['ball']) =>
+      views
+        .filter(view => view.topic.status === 'open' && view.ball === ball)
+        .sort(compareViews)
+        .map(summarize)
+    const cache = this.cache(id)
+    return {
+      generatedAt: now.toISOString(),
+      // When Flux last read this workspace's PRs; null when it never has since launch
+      githubReadAt: cache.github ? (cache.githubAt ?? null) : null,
+      queue: pick('me'),
+      active: views.filter(view => view.ball === 'agent').map(summarize),
+      waitingOnOthers: [
+        ...pick('others'),
+        ...result.loose
+          .filter(item => item.ball === 'others')
+          .map(item => ({ title: item.title, links: [item.ref], url: item.url })),
+      ],
+      dormant: pick('dormant'),
+      notes: views.filter(view => view.topic.status === 'inbox' && view.ball !== 'agent').map(summarize),
+      mergedSincePreviousWorkday: cache.github?.merged ?? [],
     }
   }
 

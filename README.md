@@ -9,7 +9,7 @@ Chaque sujet est une note Markdown dans ton vault (Obsidian ou autre). Depuis un
 - **File** : les sujets où la balle est dans ton camp, classés par urgence (review oubliée, retours à traiter, review demandée, question, livraison…).
 - **Threads** : un clic lance une session Claude Code dans Claude Desktop sur le bon dépôt et la bonne branche ; Flux la retrouve et affiche si elle travaille ou t'attend.
 - **Notes** : chaque sujet porte une note en Markdown, rendue dans l'app et modifiable au clic.
-- **Daily** : un récap du jour généré chaque matin à partir de l'état de la file.
+- **Daily** : un récap généré chaque matin : ce que tu as fait la veille (commits, travail en cours, réunions et ce qui s'y est dit via Granola) et ce qui t'attend aujourd'hui.
 - **Réunions** : Flux se tait pendant tes réunions et affiche la suivante.
 
 ## Prérequis
@@ -45,7 +45,7 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
   "paths": {
     "vault": "~/Notes",
     "repos": "~/code",
-    "dailyCommand": "~/.claude/commands/daily.md"
+    "dailyCommand": "~/.claude/skills/daily/SKILL.md"
   },
   "daily": { "allowedTools": [], "disallowedTools": [] },
   "prompts": { "ticket": "/execute-ticket {ref}" }
@@ -59,7 +59,9 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
 - `workspaces` liste les produits sur lesquels tu alternes. Avec deux espaces ou plus, un sélecteur apparaît à côté du logo : Flux ne lit alors que les tickets Jira de `jiraProjects` et les PR de `github.repos` (ou de toute l'organisation `github.owner` sans liste). Les sujets dont tous les liens appartiennent à l'autre espace sont masqués, les notes libres restent visibles partout. Sans `workspaces`, Flux montre tout.
 - `workspaces[].keywords` ajoute des mots qui désignent un produit dans le titre ou le résumé d'un call Granola (en plus de son nom, de son nom court et de ses projets Jira).
 - `rotation` décrit ton alternance : `{ "start": "2026-11-09", "weeks": 2, "order": ["cc", "pp"] }` veut dire deux semaines sur CC à partir de ce lundi, puis deux sur PP. Quand rien dans un call ne nomme le produit, Flux prend celui de la semaine et le marque « À vérifier ».
-- `paths.vault` contient les sujets (`flux/`) et les daily (`daily/`) ; `paths.repos` contient les clones où s'ouvrent les threads.
+- `paths.vault` contient les sujets (`flux/`) et les daily (`daily/`) ; `paths.repos` contient les clones où s'ouvrent les threads, et où le daily relève tes commits et ton travail non commité depuis la veille ouvrée.
+- `paths.dailyCommand` est le prompt du daily : le skill `~/.claude/skills/daily/SKILL.md` (aussi lançable avec `/daily` dans Claude Code), ou à défaut `~/.claude/commands/daily.md`.
+- `daily.allowedTools` liste les outils MCP en lecture que le daily peut appeler, par exemple `["mcp__granola"]` pour lire les notes et transcripts Granola des réunions de la veille.
 - `prompts` remplace le prompt d'une action (`take-comments`, `review`, `ticket`, `diagnostic`, `cadrage`…), avec `{url}` et `{ref}`.
 
 ## Développer

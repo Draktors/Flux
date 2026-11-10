@@ -5,6 +5,7 @@ import type { Settings, SettingsPatch, TrackedProject } from '../../shared/types
 import type { CalendarName } from '../../shared/calendars'
 import { AVAILABLE_TRACKERS, type TrackerName } from '../../shared/trackers'
 import { CONFIG } from '../config'
+import { DEFAULT_WRAPUP_TIMES, normalizeTimes } from '../engine/wrapup'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
 import {
   allWorkspaces,
@@ -18,6 +19,7 @@ type Secret = 'linearKey' | 'calendarUrl' | 'jiraToken' | 'granola'
 
 interface Stored {
   dailyTime: string
+  wrapupTimes: string[]
   captureShortcut: string
   workdayStart: number
   workdayEnd: number
@@ -37,6 +39,7 @@ interface Stored {
 
 const DEFAULTS: Stored = {
   dailyTime: '08:45',
+  wrapupTimes: DEFAULT_WRAPUP_TIMES,
   captureShortcut: 'Control+Alt+N',
   workdayStart: 9,
   workdayEnd: 19,
@@ -64,8 +67,13 @@ function writeJson(path: string, value: unknown, mode?: number): void {
   writeFileSync(path, JSON.stringify(value, null, 2), { mode })
 }
 
+function loadStored(): Stored {
+  const stored = { ...DEFAULTS, ...readJson<Partial<Stored>>(SETTINGS_FILE, {}) }
+  return { ...stored, wrapupTimes: normalizeTimes(stored.wrapupTimes) }
+}
+
 export class SettingsStore {
-  private stored: Stored = { ...DEFAULTS, ...readJson<Partial<Stored>>(SETTINGS_FILE, {}) }
+  private stored: Stored = loadStored()
   private secrets = readJson<Partial<Record<Secret, string>>>(SECRETS_FILE, {})
 
   constructor() {
@@ -135,8 +143,9 @@ export class SettingsStore {
   }
 
   apply(patch: SettingsPatch): void {
-    const { linearKey, calendarUrl, jiraToken, ...plain } = patch
+    const { linearKey, calendarUrl, jiraToken, wrapupTimes, ...plain } = patch
     this.stored = { ...this.stored, ...plain }
+    if (wrapupTimes !== undefined) this.stored.wrapupTimes = normalizeTimes(wrapupTimes)
     writeJson(SETTINGS_FILE, this.stored)
     if (plain.projects !== undefined) this.publishWorkspaces()
     const secrets: Array<[Secret, string | undefined]> = [

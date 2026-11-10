@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { rename, writeFile } from 'node:fs/promises'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
   AppState,
-  DailyState,
+  DailyRun,
+  DailySheet,
   Item,
   MergedPr,
   Meeting,
@@ -15,15 +17,38 @@ import type {
 } from '../../shared/types'
 import { RANKS } from '../../shared/ranks'
 import { CONFIG, type Workspace } from '../config'
-import { NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR } from '../paths'
+import { DAILY_COMMAND, DAILY_DIR, NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP_DIR } from '../paths'
 import { fetchAgents } from '../sources/agents'
-import { fetchGithub, type GithubSnapshot } from '../sources/github'
+import { fetchGithub, fetchReviewed, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
 import { allWorkspaces, githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
 import { compareViews, reconcile, type LiveSession } from './ball'
+import {
+  buildDaily,
+  MAX_INTENTIONS,
+  previousWorkday,
+  renderDailyNote,
+  windowDays,
+  type CompletedTicket,
+  type DailyFallback,
+} from './daily'
 import { decide, EMPTY_NOTIFY_STATE, type FluxNotification, type NotifyState } from './notify'
 import { itemFromPullRequest, itemFromTicket, type Ticket } from './rank'
+import {
+  buildWrapup,
+  dayKey,
+  dueSlot,
+  emptyJournal,
+  forDay,
+  isFreeTask,
+  observe,
+  tick,
+  untick,
+  wrapupNotification,
+  type WrapupJournal,
+  type WrapupNotification,
+} from './wrapup'
 
 const TICK_MS = 60_000
 // A meeting added a few minutes ahead still shows in time
@@ -45,24 +70,17 @@ export interface FluxHooks {
   // Each source as soon as it answers, so the first load can show its progress
   onProgress?(progress: SourceProgress): void
   onNotify(notification: FluxNotification): void
+  onWrapup(notification: WrapupNotification): void
   fetchTickets(keys: string[]): Promise<Ticket[] | null>
   // Jira tickets of the active workspace; null when Jira is not configured
   fetchJira(keys: string[], projects: string[]): Promise<Ticket[] | null>
+  // My tickets completed since an ISO date; empty without Linear
+  fetchCompleted(since: string): Promise<CompletedTicket[]>
   fetchMeetings(): Promise<Meeting[] | null>
   closeThreads(topic: Topic): Promise<void>
   // Resolves the session id of threads opened in Claude Desktop; returns the topics it changed
   adoptThreads(topics: Topic[]): Promise<Topic[]>
   onTick(now: Date, state: AppState): void
-}
-
-function previousWorkday(now: Date): string {
-  const date = new Date(now)
-  do {
-    date.setDate(date.getDate() - 1)
-  } while (date.getDay() === 0 || date.getDay() === 6)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
 }
 
 function emptyHealth(): Record<SourceName, SourceHealth> {
@@ -73,6 +91,29 @@ function emptyHealth(): Record<SourceName, SourceHealth> {
     agents: { ok: false, at: null },
     calendar: { ok: false, at: null, error: 'Adresse iCal non renseignée', missing: true },
   }
+}
+
+function journalFile(date: string): string {
+  return join(WRAPUP_DIR, `${date}.json`)
+}
+
+function readJournalFile(date: string): WrapupJournal | null {
+  const path = journalFile(date)
+  if (!existsSync(path)) return null
+  try {
+    return { ...emptyJournal(date), ...(JSON.parse(readFileSync(path, 'utf8')) as Partial<WrapupJournal>), date }
+  } catch {
+    return null
+  }
+}
+
+function readJournal(now: Date): WrapupJournal {
+  const date = dayKey(now)
+  return readJournalFile(date) ?? emptyJournal(date)
+}
+
+function notePath(date: string): string {
+  return join(DAILY_DIR, `${date}.md`)
 }
 
 function summarize(view: TopicView) {
@@ -98,7 +139,13 @@ export class Flux {
   private meetings: Meeting[] = []
   private health = emptyHealth()
   private notifyState: NotifyState = EMPTY_NOTIFY_STATE
-  private daily: DailyState = { date: '', status: 'none' }
+  private daily: DailyRun = { date: '', status: 'none' }
+  private journal: WrapupJournal = emptyJournal('')
+  private savedJournal = ''
+  // Past days do not change: their journals are read once
+  private pastJournals = new Map<string, WrapupJournal | null>()
+  protected fallback: DailyFallback | null = null
+  private fallbackDay = ''
   private state: AppState | null = null
   private timer: NodeJS.Timeout | null = null
   private ticking = false
@@ -123,6 +170,8 @@ export class Flux {
         ...(JSON.parse(readFileSync(NOTIFY_FILE, 'utf8')) as Partial<NotifyState>),
       }
     }
+    this.journal = readJournal(new Date())
+    this.savedJournal = JSON.stringify(this.journal)
     this.topics = await this.store.load()
     this.store.watch(() => void this.reload())
     await this.tick()
@@ -153,9 +202,58 @@ export class Flux {
     return this.sessions
   }
 
-  setDaily(daily: DailyState): void {
-    this.daily = daily
+  setDaily(run: DailyRun): void {
+    this.daily = run
     void this.rebuild()
+  }
+
+  // Set by hand: a later daily run keeps them
+  async setIntentions(ids: string[]): Promise<void> {
+    const live = new Set(this.state ? [...this.state.queue, ...this.state.active, ...this.state.waiting, ...this.state.dormant].map(view => view.topic.id) : [])
+    const kept = [...new Set(ids)].filter(id => live.has(id)).slice(0, MAX_INTENTIONS)
+    this.journal = { ...forDay(this.journal, new Date()), intentions: kept, intentionsEdited: true }
+    await this.rebuild()
+    if (this.state) await this.exportDaily(this.state.daily)
+  }
+
+  // Flux was off the previous workday: GitHub and Linear tell what was done, once a day
+  private async loadFallback(now: Date): Promise<void> {
+    const today = dayKey(now)
+    if (this.fallbackDay === today) return
+    const since = previousWorkday(now)
+    if (readJournalFile(dayKey(since))) {
+      this.fallback = null
+      this.fallbackDay = today
+      return
+    }
+    const [reviewed, completed] = await Promise.all([
+      fetchReviewed(
+        since,
+        this.settings.values.githubAccount,
+        githubScope(this.workspace(), CONFIG.github.owner),
+      ).catch(() => null),
+      this.hooks.fetchCompleted(since.toISOString()).catch(() => null),
+    ])
+    this.fallback = { reviewed: reviewed ?? [], completed: completed ?? [] }
+    // A source that did not answer is asked again on the next tick
+    if (reviewed !== null && completed !== null) this.fallbackDay = today
+  }
+
+  private windowJournals(now: Date): WrapupJournal[] {
+    const today = dayKey(now)
+    return windowDays(now).flatMap(date => {
+      if (date === today) return [this.journal]
+      if (!this.pastJournals.has(date)) this.pastJournals.set(date, readJournalFile(date))
+      return this.pastJournals.get(date) ?? []
+    })
+  }
+
+  // The vault note follows the tab, written again whenever the intentions change
+  private async exportDaily(sheet: DailySheet): Promise<void> {
+    await mkdir(DAILY_DIR, { recursive: true })
+    const path = notePath(sheet.date)
+    await writeFile(`${path}.tmp`, renderDailyNote(sheet, new Date()))
+    await rename(`${path}.tmp`, path)
   }
 
   async addTopic(topic: Topic): Promise<void> {
@@ -181,6 +279,29 @@ export class Flux {
     topic.closedAt = new Date().toISOString()
     await this.hooks.closeThreads(topic)
     await this.store.save(topic)
+  }
+
+  // A free task ticked closes, a closed topic unticked reopens; what the sources settled stays as is
+  async checkWrapup(id: string, done: boolean): Promise<void> {
+    const wrapup = this.state?.wrapup
+    const line = [...(wrapup?.done ?? []), ...(wrapup?.focus ?? [])].find(entry => entry.id === id)
+    if (!line?.topicId || ('locked' in line && line.locked)) return
+    const topic = this.topic(line.topicId)
+    if (!topic) return
+    const now = new Date()
+    this.journal = forDay(this.journal, now)
+    if (done) {
+      this.journal = tick(this.journal, topic.id, now)
+      if (isFreeTask(topic) && topic.status !== 'done') await this.close(topic)
+    } else {
+      this.journal = untick(this.journal, topic.id)
+      if (topic.status === 'done') {
+        topic.status = 'open'
+        topic.closedAt = undefined
+        await this.store.save(topic)
+      }
+    }
+    await this.rebuild()
   }
 
   async refresh(): Promise<void> {
@@ -300,6 +421,7 @@ export class Flux {
       }
       this.tickCount += 1
       this.synced = true
+      if (this.health.github.ok) await this.loadFallback(now)
 
       await this.rebuild(true)
       await this.sweepClosingThreads()
@@ -331,7 +453,7 @@ export class Flux {
     await Promise.all([
       fetchGithub(
         refs.filter(ref => ref.includes('#')),
-        previousWorkday(now),
+        dayKey(previousWorkday(now)),
         account,
         githubScope(workspace, CONFIG.github.owner),
       )
@@ -441,23 +563,69 @@ export class Flux {
         .filter(view => view.topic.status === 'open' && view.ball === ball)
         .sort(compareViews)
     const meeting = this.meetingStatus(now)
+    const queue = pick('me')
+    const active = views.filter(view => view.ball === 'agent')
+    this.journal = observe(this.journal, views, now, source => this.health[source].ok)
+    // A new daily run proposes the intentions, unless they were set by hand
+    const content = this.daily.date === this.journal.date ? this.daily.content : undefined
+    const proposed = content !== undefined && content.generatedAt !== this.journal.intentionsFrom
+    if (proposed) {
+      this.journal = {
+        ...this.journal,
+        intentionsFrom: content.generatedAt,
+        intentions: this.journal.intentionsEdited ? this.journal.intentions : content.intentions,
+      }
+    }
+    const times = this.settings.values.wrapupTimes
+    const wrapup = buildWrapup({
+      journal: this.journal,
+      topics: this.topics,
+      views,
+      queue,
+      merged: this.cache().github?.merged ?? [],
+      times,
+      now,
+    })
     const state: AppState = {
       generatedAt: now.toISOString(),
       workspace: workspace?.id ?? null,
       workspaces: allWorkspaces().map(workspaceInfo),
-      queue: pick('me'),
-      active: views.filter(view => view.ball === 'agent'),
+      queue,
+      active,
       waiting: pick('others'),
       dormant: pick('dormant'),
       notes: views.filter(view => view.topic.status === 'inbox' && view.ball !== 'agent'),
       loose: result.loose.filter(item => item.ball === 'others'),
       sources: this.visibleHealth(),
       meeting,
-      daily: this.daily,
+      daily: buildDaily({
+        now,
+        journals: this.windowJournals(now),
+        today: this.journal,
+        topics: this.topics,
+        views,
+        queue,
+        active,
+        merged: this.cache().github?.merged ?? [],
+        fallback: this.fallback,
+        run: this.daily,
+        skill: existsSync(DAILY_COMMAND) ? 'ready' : 'missing',
+        dailyTime: this.settings.values.dailyTime,
+        notePath: existsSync(notePath(dayKey(now))) ? notePath(dayKey(now)) : null,
+      }),
+      wrapup,
     }
     this.state = state
     this.hooks.onState(state)
     await this.writeSnapshot(state)
+    if (proposed) await this.exportDaily(state.daily)
+
+    if (notify) {
+      const due = dueSlot(times, this.journal, now, meeting.current)
+      this.journal = { ...this.journal, fired: due.fired }
+      if (due.notify) this.hooks.onWrapup(wrapupNotification(wrapup, due.notify))
+    }
+    await this.saveJournal()
 
     if (notify && this.health.github.ok) {
       const { workdayStart, workdayEnd } = this.settings.values
@@ -501,6 +669,17 @@ export class Flux {
       notes: views.filter(view => view.topic.status === 'inbox' && view.ball !== 'agent').map(summarize),
       mergedSincePreviousWorkday: cache.github?.merged ?? [],
     }
+  }
+
+  private async saveJournal(): Promise<void> {
+    const content = JSON.stringify(this.journal)
+    if (content === this.savedJournal) return
+    await mkdir(WRAPUP_DIR, { recursive: true })
+    const path = journalFile(this.journal.date)
+    const draft = `${path}.${randomUUID()}.tmp`
+    await writeFile(draft, content)
+    await rename(draft, path)
+    this.savedJournal = content
   }
 
   private async writeSnapshot(state: AppState): Promise<void> {

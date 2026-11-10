@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   app,
@@ -16,21 +16,21 @@ import type { AppState, ProjectOptions, ProposedAction, SettingsPatch, Topic } f
 import type { CallPatch } from '../shared/calls'
 import { Calls } from './calls/service'
 import { Flux } from './engine/poller'
-import { Daily } from './llm/daily'
+import { Daily, localDate } from './llm/daily'
+import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
 import { Triage } from './llm/triage'
 import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
-import { ARCHIVE_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
-import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
+import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
+import { fetchCalendar } from './sources/calendar'
 import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
 import { fetchJira, listJiraProjects } from './sources/jira'
-import { fetchLinear, listLinearTeams } from './sources/linear'
+import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
 import { adoptThreads } from './threads/desktop'
 import { goToThread, launchThread } from './threads/launch'
-import { allWorkspaces, resolveWorkspace } from './workspaces'
 
 const THREAD_SETTLE_MS = 6_000
 
@@ -129,11 +129,20 @@ function openCapture(): void {
   captureWindow = window
 }
 
-function showTopic(id: string): void {
+// A window just opened is still loading: the message waits for it
+function sendToMain(channel: string, ...args: unknown[]): void {
   const window = openMain()
-  const send = () => window.webContents.send('flux:open-topic', id)
+  const send = () => window.webContents.send(channel, ...args)
   if (window.webContents.isLoading()) window.webContents.once('did-finish-load', send)
   else send()
+}
+
+function showTopic(id: string): void {
+  sendToMain('flux:open-topic', id)
+}
+
+function showWrapup(): void {
+  sendToMain('flux:open-wrapup-view')
 }
 
 function trayLabel(state: AppState): string {
@@ -157,6 +166,7 @@ function buildTray(): void {
     tray?.popUpContextMenu(
       Menu.buildFromTemplate([
         { label: 'Ouvrir Flux', click: () => openMain() },
+        { label: 'Wrap-up', click: () => showWrapup() },
         { label: 'Nouvelle note', click: () => openCapture() },
         { label: 'Rafraîchir', click: () => void flux.refresh() },
         { type: 'separator' },
@@ -202,9 +212,7 @@ function notify(title: string, body: string, onClick: () => void): void {
 }
 
 function notifyDaily(): void {
-  notify('Daily prêt', 'Le récap du jour t’attend dans Flux.', () => {
-    openMain().webContents.send('flux:open-daily-view')
-  })
+  notify('Daily prêt', 'Le récap du jour t’attend dans Flux.', () => sendToMain('flux:open-daily-view'))
 }
 
 function requireTopic(id: string): Topic {
@@ -264,6 +272,9 @@ function registerIpc(): void {
     await flux.saveTopic(topic)
   })
   ipcMain.handle('flux:close-topic', (_event, id: string) => flux.closeTopic(id))
+  ipcMain.handle('flux:check-wrapup', (_event, id: string, done: boolean) =>
+    flux.checkWrapup(id, done),
+  )
   ipcMain.handle('flux:launch-thread', async (_event, id: string, action: ProposedAction) => {
     const view = flux.view(id)
     if (!view) throw new Error(`Sujet introuvable : ${id}`)
@@ -330,12 +341,19 @@ function registerIpc(): void {
   ipcMain.handle('flux:sync-calls', () => calls.sync())
   ipcMain.handle('flux:connect-granola', () => calls.connect(url => void shell.openExternal(url)))
   ipcMain.handle('flux:disconnect-granola', () => calls.disconnect())
-  ipcMain.handle('flux:run-daily', () => daily.run(new Date()))
-  ipcMain.handle('flux:read-daily', () => daily.read(new Date()))
+  ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))
   ipcMain.handle('flux:open-daily', () => {
-    const path = daily.notePath(new Date())
-    return path ? shell.openExternal(`obsidian://open?path=${encodeURIComponent(path)}`) : undefined
+    const path = join(DAILY_DIR, `${localDate(new Date())}.md`)
+    if (!existsSync(path)) return undefined
+    return shell.openExternal(`obsidian://open?path=${encodeURIComponent(path)}`)
   })
+  ipcMain.handle('flux:set-intentions', (_event, ids: string[]) => flux.setIntentions(ids))
+  ipcMain.handle('flux:use-daily-template', async () => {
+    const result = await useDailyTemplate()
+    if (result.ok) await flux.refresh()
+    return result
+  })
+  ipcMain.handle('flux:create-daily-skill', () => createDailySkill())
 }
 
 async function main(): Promise<void> {
@@ -346,16 +364,10 @@ async function main(): Promise<void> {
   await app.whenReady()
   settings = new SettingsStore()
   const triage = new Triage()
-  daily = new Daily({
-    publish: state => flux.setDaily(state),
-    onReady: () => notifyDaily(),
-    fetchMeetings: async (from, to) => {
-      const url = settings.secret('calendarUrl')
-      return url && settings.calendar() ? fetchCalendarBetween(url, from, to) : null
-    },
-    snapshot: (workspace, now) => flux.workspaceSnapshot(workspace, now),
-    activeWorkspace: () => resolveWorkspace(allWorkspaces(), settings.values.workspace),
-  })
+  daily = new Daily(
+    state => flux.setDaily(state),
+    () => notifyDaily(),
+  )
   calls = new Calls(settings, state => {
     for (const window of BrowserWindow.getAllWindows()) window.webContents.send('flux:calls', state)
   })
@@ -373,6 +385,7 @@ async function main(): Promise<void> {
       }
     },
     onNotify: ({ title, body, topicId }) => notify(title, body, () => showTopic(topicId)),
+    onWrapup: ({ title, body }) => notify(title, body, () => showWrapup()),
     fetchTickets: async keys => {
       const key = settings.secret('linearKey')
       if (!key || !settings.uses('linear')) return null
@@ -387,6 +400,10 @@ async function main(): Promise<void> {
       if (!settings.uses('jira') || !site || !email || !token) return null
       // Without workspaces, every project you are assigned in counts
       return fetchJira({ site, email, token }, projects, keys)
+    },
+    fetchCompleted: async since => {
+      const key = settings.secret('linearKey')
+      return key ? fetchCompleted(key, since) : []
     },
     fetchMeetings: async () => {
       const url = settings.secret('calendarUrl')

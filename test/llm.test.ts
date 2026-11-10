@@ -1,18 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isMaxSession } from '../src/main/llm/claude'
-import {
-  activityFor,
-  heading,
-  isDailyDue,
-  localDate,
-  localIso,
-  noteFrom,
-  previousWorkdayStart,
-  withoutFrontmatter,
-} from '../src/main/llm/daily'
-import { parseLog, remoteName } from '../src/main/sources/commits'
-import { ownsRepo } from '../src/main/workspaces'
-import type { Workspace } from '../src/main/config'
+import { dailyFrom, isDailyDue, localDate, type DailyIds } from '../src/main/llm/daily'
 import { applyVerdicts, parseVerdicts } from '../src/main/llm/triage'
 import type { Ticket } from '../src/main/engine/rank'
 import { displayTitle } from '../src/renderer/src/format'
@@ -92,15 +80,48 @@ describe('déclenchement du daily', () => {
     expect(isDailyDue(at('2026-11-07T09:00:00'), '08:45', 19, false)).toBe(false)
   })
 
-  it('écarte le préambule de la réponse et exige le titre du jour', () => {
-    expect(noteFrom('Voici le digest.\n\n# Daily — 2026-11-06\ncorps\n\n', heading(null, '2026-11-06'))).toBe(
-      '# Daily — 2026-11-06\ncorps\n',
-    )
-    expect(() => noteFrom('Je n’ai pas pu.', heading(null, '2026-11-06'))).toThrow()
-  })
-
   it('date la note en heure locale', () => {
     expect(localDate(at('2026-11-06T00:30:00'))).toBe('2026-11-06')
+  })
+})
+
+describe('réponse du daily', () => {
+  const ids: DailyIds = {
+    lines: new Set(['hb#1', 'hb#2', 'web#3']),
+    candidates: new Set(['hb#1', 'hb#2']),
+    blockers: new Set(['web#3']),
+  }
+  const now = new Date(2026, 10, 10, 9, 30)
+  const answer = {
+    intentions: ['hb#2', 'inconnu', 'hb#2', 'hb#1'],
+    titles: { 'hb#1': '  Vue   débrief ', inconnu: 'ignoré' },
+    unblock: { 'web#3': 'Relancer Nicolas sur le design', 'hb#1': 'pas un bloquant' },
+    health: [
+      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x' },
+      { source: 'Datadog', level: 'ok', text: 'RAS', detail: 'jamais affiché', url: 'javascript:alert(1)' },
+      { source: 'Amplitude', level: 'superbe', text: 'niveau inventé' },
+    ],
+  }
+
+  it('lit le JSON même entouré de texte ou d’un bloc de code', () => {
+    const content = dailyFrom(`Voici :\n\`\`\`json\n${JSON.stringify(answer)}\n\`\`\`\n`, ids, now)
+    expect(content.generatedAt).toBe(now.toISOString())
+    expect(content.intentions).toEqual(['hb#2', 'hb#1'])
+    expect(content.titles).toEqual({ 'hb#1': 'Vue débrief' })
+    expect(content.unblock).toEqual({ 'web#3': 'Relancer Nicolas sur le design' })
+  })
+
+  it('garde le détail en alerte seulement et écarte les niveaux et liens inconnus', () => {
+    const { health } = dailyFrom(JSON.stringify(answer), ids, now)
+    expect(health).toEqual([
+      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x' },
+      { source: 'Datadog', level: 'ok', text: 'RAS', detail: null, url: null },
+    ])
+  })
+
+  it('échoue sans objet JSON', () => {
+    expect(() => dailyFrom('Je n’ai pas pu.', ids, now)).toThrow()
+    expect(() => dailyFrom('{ pas du json }', ids, now)).toThrow()
   })
 })
 
@@ -113,100 +134,5 @@ describe('titres affichés', () => {
     ['Une note: avec deux points', 'Une note: avec deux points'],
   ])('%s', (raw, expected) => {
     expect(displayTitle(raw)).toBe(expected)
-  })
-})
-
-describe('matière du daily', () => {
-  it('remonte au vendredi un lundi', () => {
-    const start = previousWorkdayStart(new Date(2026, 10, 9, 10, 0))
-    expect([start.getDate(), start.getHours()]).toEqual([6, 0])
-  })
-
-  it('prend la veille un mardi', () => {
-    expect(previousWorkdayStart(new Date(2026, 10, 10, 10, 0)).getDate()).toBe(9)
-  })
-
-  it('retire le frontmatter d’un skill', () => {
-    expect(withoutFrontmatter('---\nname: daily\n---\n\n# Daily\n')).toBe('# Daily\n')
-    expect(withoutFrontmatter('# Daily\n')).toBe('# Daily\n')
-  })
-
-  it('lit le journal git, même avec un séparateur dans le message', () => {
-    const line = ['abcdef1234567', '2026-11-06T17:02:00+01:00', 'refs/heads/feat/sms', 'fix(sms): a\x1fb'].join('\x1f')
-    expect(parseLog(`${line}\n`, 'cc-mobile')).toEqual([
-      {
-        repo: 'cc-mobile',
-        remote: null,
-        ref: 'refs/heads/feat/sms',
-        sha: 'abcdef1234',
-        at: '2026-11-06T17:02:00+01:00',
-        subject: 'fix(sms): a\x1fb',
-      },
-    ])
-  })
-})
-
-describe('heures du daily', () => {
-  it('donne l’heure locale avec son décalage', () => {
-    const iso = '2026-11-10T09:00:00.000Z'
-    const local = localIso(iso)
-    expect(new Date(local).toISOString()).toBe(iso)
-    expect(local).toMatch(/^2026-11-10T\d{2}:00[+-]\d{2}:\d{2}$/)
-  })
-})
-
-describe('daily par espace', () => {
-  const pp: Workspace = {
-    id: 'pp',
-    label: 'PanneauPocket',
-    short: 'PP',
-    jiraProjects: ['DEVPP'],
-    github: { owner: 'panneaupocket-jvs', repos: ['panneau-pocket', 'panneau-pocket-mobile'] },
-  }
-  const cc: Workspace = {
-    id: 'cc',
-    label: 'Communicity',
-    short: 'CC',
-    jiraProjects: ['CCM'],
-    github: { owner: 'citopia-jvs', repos: ['cc-mobile'] },
-  }
-  const commit = (remote: string | null) => ({ repo: 'r', remote, ref: 'main', sha: '1', at: '', subject: 's' })
-  const meeting = (title: string) => ({ title, start: '2026-11-06T10:00+01:00', end: '2026-11-06T10:15+01:00' })
-
-  it('lit owner/name d’un remote ssh ou https', () => {
-    expect(remoteName('git@github-citopia:citopia-jvs/cc-mobile.git')).toBe('citopia-jvs/cc-mobile')
-    expect(remoteName('github-citopia:panneaupocket-jvs/panneau-pocket-sag.git')).toBe('panneaupocket-jvs/panneau-pocket-sag')
-    expect(remoteName('https://github.com/Draktors/Flux.git')).toBe('Draktors/Flux')
-    expect(remoteName('')).toBeNull()
-  })
-
-  it('rattache un dépôt à son espace', () => {
-    expect(ownsRepo(pp, 'panneaupocket-jvs/panneau-pocket-mobile')).toBe(true)
-    expect(ownsRepo(pp, 'citopia-jvs/cc-mobile')).toBe(false)
-    expect(ownsRepo(pp, 'Draktors/panneau-pocket')).toBe(false)
-    expect(ownsRepo({ ...cc, github: { owner: 'citopia-jvs' } }, 'citopia-jvs/anything')).toBe(true)
-  })
-
-  it('ne montre au daily PP que PP, et garde les réunions sans espace à part', () => {
-    const activity = {
-      since: '',
-      git: {
-        commits: [commit('panneaupocket-jvs/panneau-pocket-mobile'), commit('citopia-jvs/cc-mobile'), commit(null)],
-        uncommitted: [{ repo: 'communicity', remote: 'citopia-jvs/cc-mobile', branch: 'b', files: [] }],
-      },
-      pastMeetings: [meeting('PP - Daily'), meeting('CC - Daily'), meeting('Point RH')],
-      remainingMeetingsToday: [meeting('PP - Sprint Review & Sprint Retro')],
-    }
-    const scoped = activityFor(activity, pp, [pp, cc])
-    expect(scoped.git.commits.map(c => c.remote)).toEqual(['panneaupocket-jvs/panneau-pocket-mobile'])
-    expect(scoped.git.uncommitted).toEqual([])
-    expect(scoped.pastMeetings?.map(m => m.title)).toEqual(['PP - Daily'])
-    expect(scoped.remainingMeetingsToday?.map(m => m.title)).toEqual(['PP - Sprint Review & Sprint Retro'])
-    expect(scoped.unsortedMeetings.map(m => m.title)).toEqual(['Point RH'])
-  })
-
-  it('titre la note avec l’espace', () => {
-    expect(heading(pp, '2026-11-09')).toBe('# Daily PP — 2026-11-09')
-    expect(heading(null, '2026-11-09')).toBe('# Daily — 2026-11-09')
   })
 })

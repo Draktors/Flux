@@ -42,6 +42,7 @@ function pr(overrides: Partial<PullRequest>): PullRequest {
     ci: 'SUCCESS',
     lastCommitAt: '2026-11-06T08:00:00Z',
     viewerReview: null,
+    reviewedAt: null,
     reviewRequested: false,
     requestedAt: null,
     pendingReview: null,
@@ -69,13 +70,16 @@ describe('file sur les données réelles du 06/11', () => {
     expect(byRef.get('api#14297')?.signals.some(signal => signal.rank === 1)).toBe(false)
   })
 
-  it('remonte les re-reviews avant les demandes simples', () => {
-    expect(byRef.get('web#6966')?.signals[0].action).toBe('re-review')
-    expect(byRef.get('web#6967')?.signals[0].action).toBe('re-review')
-    expect(byRef.get('web#6983')?.signals[0].action).toBe('review')
-    expect(byRef.get('web#6966')?.signals[0].weight).toBeLessThan(
-      byRef.get('web#6983')?.signals[0].weight ?? 0,
-    )
+  it('range en attente les PR que j’ai déjà reviewées, malgré les réponses de l’auteur', () => {
+    // web#6967 is hb#6967: commented on 05/11, then four replies from its author on my threads
+    for (const ref of ['web#6966', 'web#6967']) {
+      expect(byRef.get(ref)?.signals).toEqual([])
+      expect(byRef.get(ref)?.ball).toBe('others')
+    }
+  })
+
+  it('garde en review une PR que je n’ai pas encore reviewée', () => {
+    expect(byRef.get('web#6983')?.signals[0]).toMatchObject({ rank: 2, action: 'review' })
   })
 
   it('garde une demande de review explicite même ancienne', () => {
@@ -124,17 +128,6 @@ describe('règles unitaires', () => {
     expect(item.signals).toEqual([])
   })
 
-  it('ignore un push après une approbation', () => {
-    const item = itemFromPullRequest(
-      pr({
-        author: 'sam-lee',
-        viewerReview: { state: 'APPROVED', submittedAt: '2026-11-05T08:00:00Z' },
-      }),
-      context,
-    )
-    expect(item.ball).toBe('others')
-  })
-
   it('demande confirmation quand GitHub ne sait pas encore si la PR est mergeable', () => {
     const item = itemFromPullRequest(
       pr({ reviewDecision: 'APPROVED', mergeStateStatus: 'UNKNOWN' }),
@@ -149,6 +142,147 @@ describe('règles unitaires', () => {
       'OPS-125',
       'APP-978',
     ])
+  })
+})
+
+describe('PR que j’ai déjà reviewée', () => {
+  const REVIEWED_AT = '2026-11-05T10:00:00Z'
+  const reviewed = (state: string, overrides: Partial<PullRequest> = {}) =>
+    itemFromPullRequest(
+      pr({
+        author: 'sam-lee',
+        viewerReview: { state, submittedAt: REVIEWED_AT },
+        reviewedAt: REVIEWED_AT,
+        ...overrides,
+      }),
+      context,
+    )
+  const reply = { resolved: false, firstAuthor: ME, lastAuthor: 'sam-lee', lastAt: '2026-11-05T11:00:00Z' }
+
+  it.each(['COMMENTED', 'CHANGES_REQUESTED', 'APPROVED'])(
+    'passe en attente après une review %s, malgré les réponses et les pushes',
+    state => {
+      const item = reviewed(state, { threads: [reply], lastCommitAt: '2026-11-06T08:00:00Z' })
+      expect(item.signals).toEqual([])
+      expect(item.ball).toBe('others')
+    },
+  )
+
+  it("revient quand l'auteur redemande ma review", () => {
+    const item = reviewed('COMMENTED', {
+      threads: [reply],
+      reviewRequested: true,
+      requestedAt: '2026-11-06T09:30:00Z',
+    })
+    expect(item.signals).toHaveLength(1)
+    expect(item.signals[0]).toMatchObject({
+      rank: 2,
+      action: 're-review',
+      detail: 'Review redemandée par sam',
+      since: '2026-11-06T09:30:00Z',
+    })
+  })
+
+  it('passe une review redemandée avant une première demande', () => {
+    const again = reviewed('APPROVED', { reviewRequested: true, requestedAt: '2026-11-06T09:30:00Z' })
+    const first = itemFromPullRequest(
+      pr({ author: 'sam-lee', reviewRequested: true, requestedAt: '2026-11-06T09:30:00Z' }),
+      context,
+    )
+    expect(first.signals[0].action).toBe('review')
+    expect(again.signals[0].weight).toBeLessThan(first.signals[0].weight)
+  })
+
+  it('ignore une demande qui précède ma review', () => {
+    const old = { reviewRequested: true, requestedAt: '2026-11-04T09:00:00Z' }
+    expect(reviewed('COMMENTED', old).signals).toEqual([])
+    expect(reviewed('APPROVED', { reviewRequested: true, requestedAt: null }).signals).toEqual([])
+  })
+
+  it('garde un commentaire non soumis à soumettre', () => {
+    const item = reviewed('APPROVED', {
+      pendingReview: { createdAt: '2026-11-06T08:00:00Z', updatedAt: '2026-11-06T09:00:00Z', comments: 1 },
+    })
+    expect(item.signals.map(signal => signal.rank)).toEqual([0])
+  })
+
+  it('repasse en review quand GitHub rejette mon approbation au push', () => {
+    const item = itemFromPullRequest(
+      pr({
+        author: 'sam-lee',
+        viewerReview: { state: 'DISMISSED', submittedAt: REVIEWED_AT },
+        lastCommitAt: '2026-11-06T08:00:00Z',
+      }),
+      context,
+    )
+    expect(item.signals[0]).toMatchObject({ rank: 2, detail: 'push depuis ta review' })
+  })
+
+  it('lit ma review dans les données réelles', () => {
+    const reviewedOf = (number: number) => prs.find(entry => entry.number === number)?.reviewedAt
+    expect(reviewedOf(1568)).toBe('2026-11-06T09:53:44Z')
+    expect(reviewedOf(6967)).toBe('2026-11-05T14:57:17Z')
+    expect(reviewedOf(6983)).toBeNull()
+  })
+
+  it("ramène hb#6967 dans la file quand l'auteur redemande ma review", () => {
+    const node = raw.data.search.nodes.find(entry => entry.number === 6967)
+    if (!node) throw new Error('web#6967 absent des fixtures')
+    const request = { createdAt: '2026-11-06T09:00:00Z', requestedReviewer: { login: ME } }
+    const again = normalizePullRequest(
+      {
+        ...node,
+        viewerLatestReviewRequest: { id: 'RR_again' },
+        timelineItems: { nodes: [...node.timelineItems.nodes, request] },
+      },
+      ME,
+    )
+    expect(itemFromPullRequest(again, context).signals).toEqual([
+      expect.objectContaining({ rank: 2, action: 're-review', since: '2026-11-06T09:00:00Z' }),
+    ])
+  })
+})
+
+describe('review lue depuis GitHub', () => {
+  const node = raw.data.search.nodes[0]
+  const reviewedAtOf = (overrides: Partial<RawPullRequest>) =>
+    normalizePullRequest({ ...node, ...overrides }, ME).reviewedAt
+  const latest = (state: string) => ({ state, submittedAt: '2026-11-06T10:00:00Z' })
+  const opinion = (login: string, state: string) => ({
+    nodes: [{ author: { login }, state, submittedAt: '2026-11-05T10:00:00Z' }],
+  })
+  const none = { nodes: [] }
+
+  it('compte un simple commentaire comme une review', () => {
+    expect(
+      reviewedAtOf({ viewerLatestReview: latest('COMMENTED'), latestOpinionatedReviews: none }),
+    ).toBe('2026-11-06T10:00:00Z')
+  })
+
+  it('date la review de ma dernière soumission, après une approbation ou des changements demandés', () => {
+    for (const state of ['APPROVED', 'CHANGES_REQUESTED']) {
+      expect(
+        reviewedAtOf({ viewerLatestReview: latest('COMMENTED'), latestOpinionatedReviews: opinion(ME, state) }),
+      ).toBe('2026-11-06T10:00:00Z')
+    }
+  })
+
+  it('ne compte plus une review que GitHub a rejetée', () => {
+    expect(
+      reviewedAtOf({ viewerLatestReview: latest('DISMISSED'), latestOpinionatedReviews: none }),
+    ).toBeNull()
+    expect(
+      reviewedAtOf({
+        viewerLatestReview: latest('COMMENTED'),
+        latestOpinionatedReviews: opinion(ME, 'DISMISSED'),
+      }),
+    ).toBeNull()
+  })
+
+  it("ne compte pas la review d'un autre", () => {
+    expect(
+      reviewedAtOf({ viewerLatestReview: null, latestOpinionatedReviews: opinion('sam-lee', 'APPROVED') }),
+    ).toBeNull()
   })
 })
 

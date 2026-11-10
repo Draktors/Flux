@@ -2,8 +2,10 @@ import type { GithubProfile, MergedPr } from '../../shared/types'
 import { run } from '../exec'
 import { CONFIG } from '../config'
 import { BIN } from '../paths'
+import type { ReviewedPr } from '../engine/daily'
 import { prRef, type PullRequest, type ReviewThread } from '../engine/rank'
 import type { GithubScope } from '../workspaces'
+import { dayKey } from '../engine/wrapup'
 
 export const GITHUB_HOST = CONFIG.github.host
 const HOST = GITHUB_HOST
@@ -15,6 +17,7 @@ const FRAGMENT = `fragment PR on PullRequest {
   number title url state isDraft updatedAt mergedAt closedAt headRefName reviewDecision mergeStateStatus
   repository { name } author { login }
   viewerLatestReview { state submittedAt }
+  latestOpinionatedReviews(first: 20) { nodes { author { login } state submittedAt } }
   viewerLatestReviewRequest { id }
   timelineItems(last: 3, itemTypes: [REVIEW_REQUESTED_EVENT]) {
     nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } }
@@ -52,6 +55,9 @@ export interface RawPullRequest {
   repository: { name: string }
   author: RawActor | null
   viewerLatestReview: { state: string; submittedAt: string | null } | null
+  latestOpinionatedReviews: {
+    nodes: Array<{ author: RawActor | null; state: string; submittedAt: string | null }>
+  }
   viewerLatestReviewRequest: { id: string } | null
   timelineItems: {
     nodes: Array<{ createdAt: string; requestedReviewer: { login?: string } | null }>
@@ -80,6 +86,18 @@ function normalizeThread(raw: RawThread): ReviewThread {
   }
 }
 
+const SUBMITTED = new Set(['COMMENTED', 'CHANGES_REQUESTED', 'APPROVED'])
+
+// My review counts from my latest submission, comment, change request or approval alike, until
+// GitHub dismisses my verdict, as repos voiding stale approvals do on push
+function reviewedAt(raw: RawPullRequest, me: string): string | null {
+  const opinion = raw.latestOpinionatedReviews.nodes.find(review => review.author?.login === me)
+  if (opinion?.state === 'DISMISSED') return null
+  const latest = raw.viewerLatestReview
+  if (latest !== null && SUBMITTED.has(latest.state)) return latest.submittedAt
+  return opinion?.submittedAt ?? null
+}
+
 export function normalizePullRequest(raw: RawPullRequest, me: string): PullRequest {
   const commit = raw.commits.nodes[0]?.commit
   const pending = raw.reviews.nodes.find(review => review.author?.login === me)
@@ -102,6 +120,7 @@ export function normalizePullRequest(raw: RawPullRequest, me: string): PullReque
     ci: commit?.statusCheckRollup?.state ?? null,
     lastCommitAt: commit?.committedDate ?? raw.updatedAt,
     viewerReview: raw.viewerLatestReview,
+    reviewedAt: reviewedAt(raw, me),
     reviewRequested: raw.viewerLatestReviewRequest !== null,
     requestedAt: request?.createdAt ?? null,
     pendingReview: pending
@@ -321,4 +340,36 @@ export async function listRecentRepos(account: string | null, now = new Date()):
     if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
   }
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
+}
+
+// PRs of others I reviewed since a date, for a daily Flux kept no journal of
+export async function fetchReviewed(
+  since: Date,
+  account: string | null = null,
+  scope: GithubScope = DEFAULT_SCOPE,
+): Promise<ReviewedPr[]> {
+  const data = await graphql<{
+    reviewed: {
+      nodes: Array<{
+        number: number
+        title: string
+        url: string
+        repository: { name: string }
+        viewerLatestReview: { submittedAt: string | null } | null
+      }>
+    }
+  }>(
+    account,
+    `query($reviewed: String!) {
+      reviewed: search(query: $reviewed, type: ISSUE, first: 30) {
+        nodes { ... on PullRequest { number title url repository { name } viewerLatestReview { submittedAt } } }
+      }
+    }`,
+    { reviewed: `is:pr reviewed-by:@me -author:@me${scope.qualifiers} updated:>=${dayKey(since)}` },
+  )
+  return data.reviewed.nodes.flatMap(node => {
+    const at = node.viewerLatestReview?.submittedAt
+    if (!at || new Date(at) < since) return []
+    return [{ ref: prRef(node.repository.name, node.number), title: node.title, url: node.url, reviewedAt: at }]
+  })
 }

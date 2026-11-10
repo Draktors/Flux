@@ -1,3 +1,4 @@
+import type { CompletedTicket } from '../engine/daily'
 import { CLOSED_STATE_TYPES, type LinearNotice, type Ticket } from '../engine/rank'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -117,6 +118,19 @@ export function linkedFilter(keys: string[]): unknown {
   return identifiers.length > 0 ? { id: { in: identifiers } } : null
 }
 
+async function linearQuery<T>(apiKey: string, query: string, variables: Record<string, unknown> = {}): Promise<T> {
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) throw new Error(`Linear ${response.status}`)
+  const payload = (await response.json()) as { data?: T; errors?: Array<{ message: string }> }
+  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
+  return payload.data
+}
+
 export async function fetchLinear(apiKey: string, keys: string[]): Promise<Ticket[]> {
   const filter = linkedFilter(keys)
   const query = `query($filter: IssueFilter, $withLinked: Boolean!) {
@@ -141,27 +155,16 @@ export async function fetchLinear(apiKey: string, keys: string[]): Promise<Ticke
       }
     }
   }`
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables: { filter, withLinked: filter !== null } }),
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (!response.ok) throw new Error(`Linear ${response.status}`)
-  const payload = (await response.json()) as {
-    data?: {
-      viewer: { assignedIssues: { nodes: RawIssue[] } }
-      linked?: { nodes: RawIssue[] }
-      notifications: { nodes: RawNotification[] }
-    }
-    errors?: Array<{ message: string }>
-  }
-  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
+  const data = await linearQuery<{
+    viewer: { assignedIssues: { nodes: RawIssue[] } }
+    linked?: { nodes: RawIssue[] }
+    notifications: { nodes: RawNotification[] }
+  }>(apiKey, query, { filter, withLinked: filter !== null })
   const requested = new Set(keys)
   return mergeTickets(
-    payload.data.viewer.assignedIssues.nodes,
-    (payload.data.linked?.nodes ?? []).filter(issue => requested.has(issue.identifier)),
-    payload.data.notifications.nodes,
+    data.viewer.assignedIssues.nodes,
+    (data.linked?.nodes ?? []).filter(issue => requested.has(issue.identifier)),
+    data.notifications.nodes,
     new Date(),
   )
 }
@@ -181,4 +184,26 @@ export async function listLinearTeams(apiKey: string): Promise<Array<{ key: stri
   }
   if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
   return payload.data.teams.nodes
+}
+
+// My tickets completed since a date, for a daily Flux kept no journal of
+export async function fetchCompleted(apiKey: string, since: string): Promise<CompletedTicket[]> {
+  const data = await linearQuery<{
+    viewer: { assignedIssues: { nodes: Array<{ identifier: string; title: string; url: string; completedAt: string | null }> } }
+  }>(
+    apiKey,
+    `query($since: DateTimeOrDuration!) {
+      viewer {
+        assignedIssues(first: 50, filter: { completedAt: { gte: $since } }) {
+          nodes { identifier title url completedAt }
+        }
+      }
+    }`,
+    { since },
+  )
+  return data.viewer.assignedIssues.nodes.flatMap(issue =>
+    issue.completedAt
+      ? [{ key: issue.identifier, title: issue.title, url: issue.url, completedAt: issue.completedAt }]
+      : [],
+  )
 }

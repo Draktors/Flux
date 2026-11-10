@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "package": "pnpm build && electron-builder --mac --dir",
-    "install-app": "pnpm package && rm -rf /Applications/Flux.app && cp -R dist/mac-arm64/Flux.app /Applications/ && codesign --force --deep --sign - /Applications/Flux.app"
+    "install-app": "sh scripts/install-app.sh"
   },
   "build": {
     "appId": "io.github.lacaux-gerome.flux",

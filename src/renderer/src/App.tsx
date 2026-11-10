@@ -13,6 +13,7 @@ import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '
 import type { CallsState } from '../../shared/calls'
 import { Boot, type BootProgress } from './Boot'
 import { CallsView } from './CallsView'
+import { Changelog } from './Changelog'
 import { DailyView } from './DailyView'
 import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
@@ -24,11 +25,15 @@ import { SettingsPanel } from './SettingsPanel'
 import { Toast, type ToastMessage } from './Toast'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
+import { WrapupView } from './WrapupView'
 
-type ListTab = 'queue' | 'active' | 'waiting' | 'notes' | 'dormant'
-type Tab = ListTab | 'daily' | 'calls'
+type ListTab = 'queue' | 'active' | 'waiting' | 'notes'
+// Full-page views under the top bar, with no rail
+type SheetTab = 'wrapup' | 'daily' | 'calls'
+type Tab = ListTab | SheetTab
 
 const DAILY_READ_KEY = 'flux.dailyRead'
+const WRAPUP_READ_KEY = 'flux.wrapupRead'
 // The loading scene plays at least this long, then dissolves into the app
 const BOOT_MIN_MS = 1800
 const BOOT_EXIT_MS = 900
@@ -45,13 +50,21 @@ function allViews(state: AppState): TopicView[] {
   return [...state.queue, ...state.active, ...state.waiting, ...state.notes, ...state.dormant]
 }
 
+function isSheet(tab: Tab): tab is SheetTab {
+  return tab === 'wrapup' || tab === 'daily' || tab === 'calls'
+}
+
+// Dormant topics close the waiting list: the wrap-up took their tab
+function listOf(state: AppState, tab: ListTab): TopicView[] {
+  return tab === 'waiting' ? [...state.waiting, ...state.dormant] : state[tab]
+}
+
 function tabFor(state: AppState, id: string): ListTab | null {
   const has = (views: TopicView[]) => views.some(view => view.topic.id === id)
   if (has(state.queue)) return 'queue'
   if (has(state.active)) return 'active'
-  if (has(state.waiting)) return 'waiting'
+  if (has(listOf(state, 'waiting'))) return 'waiting'
   if (has(state.notes)) return 'notes'
-  if (has(state.dormant)) return 'dormant'
   return null
 }
 
@@ -61,17 +74,17 @@ function emptyTitle(tab: ListTab, looseCount: number): string {
   return 'Rien ici pour le moment.'
 }
 
-function dailyRead(): string | null {
+function readMark(key: string): string | null {
   try {
-    return localStorage.getItem(DAILY_READ_KEY)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-function markDailyRead(date: string): void {
+function saveMark(key: string, value: string): void {
   try {
-    localStorage.setItem(DAILY_READ_KEY, date)
+    localStorage.setItem(key, value)
   } catch {
     return
   }
@@ -88,7 +101,8 @@ export function App() {
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const showToast = (text: string, tone: ToastMessage['tone'] = 'ok') =>
     setToast({ id: Date.now(), text, tone })
-  const [readDate, setReadDate] = useState(dailyRead)
+  const [readDate, setReadDate] = useState(() => readMark(DAILY_READ_KEY))
+  const [readSlot, setReadSlot] = useState(() => readMark(WRAPUP_READ_KEY))
   const [onboarding, setOnboarding] = useState(false)
   const [sceneTint, setSceneTint] = useState<RankStyle | null>(null)
   const [settings, setSettings] = useState<FluxSettings | null>(null)
@@ -177,6 +191,14 @@ export function App() {
   )
 
   useEffect(() => window.flux.onOpenDaily(() => setTab('daily')), [])
+  useEffect(
+    () =>
+      window.flux.onOpenWrapup(() => {
+        setTab('wrapup')
+        setSettingsOpen(false)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!state || !selected) return
@@ -186,22 +208,31 @@ export function App() {
 
   useEffect(() => {
     if (tab === 'daily' && state?.daily.status === 'ready') {
-      markDailyRead(state.daily.date)
+      saveMark(DAILY_READ_KEY, state.daily.date)
       setReadDate(state.daily.date)
     }
   }, [tab, state?.daily.status, state?.daily.date])
 
+  const wrapupMark = state?.wrapup.slot ? `${state.wrapup.date} ${state.wrapup.slot}` : null
+  useEffect(() => {
+    if (tab === 'wrapup' && wrapupMark) {
+      saveMark(WRAPUP_READ_KEY, wrapupMark)
+      setReadSlot(wrapupMark)
+    }
+  }, [tab, wrapupMark])
+
   const views = useMemo(() => (state ? allViews(state) : []), [state])
-  const listTab: ListTab = tab === 'daily' || tab === 'calls' ? 'queue' : tab
-  const list = state ? state[listTab] : []
+  const sheet = isSheet(tab)
+  const listTab: ListTab = isSheet(tab) ? 'queue' : tab
+  const list = useMemo(() => (state ? listOf(state, listTab) : []), [state, listTab])
   const current =
-    (tab !== 'daily' && list.find(view => view.topic.id === selected)) ||
-    (tab !== 'daily' ? views.find(view => view.topic.id === selected) : undefined) ||
+    (!sheet && list.find(view => view.topic.id === selected)) ||
+    (!sheet ? views.find(view => view.topic.id === selected) : undefined) ||
     list[0]
   const looseItem =
     tab === 'waiting' ? state?.loose.find(item => looseId(item) === selected) : undefined
   const currentId = looseItem ? looseId(looseItem) : (current?.topic.id ?? null)
-  const isFresh = useSeen(state?.queue ?? [], tab === 'daily' ? null : currentId)
+  const isFresh = useSeen(state?.queue ?? [], sheet ? null : currentId)
   const focusRank = looseItem ? null : (current?.rank ?? null)
   const style = useMemo(() => rankStyle(focusRank), [focusRank])
   // Arrow keys walk the rail in order, loose items included
@@ -216,7 +247,7 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || tab === 'daily' || tab === 'calls' || settingsOpen) return
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       const index = order.indexOf(currentId ?? '')
       const next = order[index + (event.key === 'ArrowRight' ? 1 : -1)]
@@ -227,7 +258,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [order, currentId, tab, settingsOpen])
+  }, [order, currentId, sheet, settingsOpen])
 
   // Same slot in both trees, so the scene keeps playing while the app appears underneath
   const bootScene =
@@ -264,9 +295,13 @@ export function App() {
   const tabs: Array<{ key: Tab; label: string; count: number }> = [
     { key: 'queue', label: 'File', count: state.queue.length },
     { key: 'active', label: 'En cours', count: state.active.length },
-    { key: 'waiting', label: 'Attente', count: state.waiting.length + state.loose.length },
+    {
+      key: 'waiting',
+      label: 'Attente',
+      count: state.waiting.length + state.dormant.length + state.loose.length,
+    },
     { key: 'notes', label: 'Notes', count: state.notes.length },
-    { key: 'dormant', label: 'Dormant', count: state.dormant.length },
+    { key: 'wrapup', label: 'Wrap-up', count: 0 },
     { key: 'calls', label: 'Calls', count: callsState?.calls.filter(call => call.uncertain).length ?? 0 },
     { key: 'daily', label: 'Daily', count: 0 },
   ]
@@ -285,8 +320,21 @@ export function App() {
   const offlineLabel = offline.map(name => SOURCE_LABEL[name]).join(', ')
   const connectLabel = toConnect.map(name => SOURCE_LABEL[name]).join(', ')
   const unreadDaily = state.daily.status === 'ready' && readDate !== state.daily.date
+  const unreadWrapup = wrapupMark !== null && readSlot !== wrapupMark
   const index = list.findIndex(view => view.topic.id === currentId)
   const position = tab === 'queue' && index >= 0 ? `${index + 1} sur ${list.length}` : null
+  const openTopic = (id: string) => {
+    setSelected(id)
+    setTab(tabFor(state, id) ?? 'queue')
+  }
+  // A dated line at the end of the topic's note
+  const addNote = (id: string, text: string) => {
+    const topic = views.find(view => view.topic.id === id)?.topic
+    if (!topic) return
+    const stamp = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    const head = topic.body.trim() ? `${topic.body.trimEnd()}\n\n` : ''
+    void window.flux.updateTopic(id, { body: `${head}**${stamp}** — ${text}\n` })
+  }
 
   return (
     <>
@@ -346,6 +394,9 @@ export function App() {
                 {entry.key === 'daily' && unreadDaily && (
                   <span className="unread" aria-label="Nouveau daily" />
                 )}
+                {entry.key === 'wrapup' && unreadWrapup && (
+                  <span className="unread" aria-label="Wrap-up à faire" />
+                )}
               </button>
             ))}
           </nav>
@@ -393,6 +444,7 @@ export function App() {
             >
               <RefreshCw size={17} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
             </button>
+            <Changelog />
             <button type="button" className="pill glass" onClick={() => void window.flux.openCapture()}>
               Note
               <Plus size={16} aria-hidden="true" />
@@ -417,7 +469,9 @@ export function App() {
             <CallsView state={callsState} workspace={switching ?? state.workspace} workspaces={state.workspaces} />
           )
         ) : tab === 'daily' ? (
-          <DailyView daily={state.daily} />
+          <DailyView daily={state.daily} onOpen={openTopic} onNote={addNote} />
+        ) : tab === 'wrapup' ? (
+          <WrapupView wrapup={state.wrapup} onOpen={openTopic} />
         ) : (
           <>
             <main className="focus">

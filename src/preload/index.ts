@@ -30,6 +30,7 @@ const api: FluxApi = {
   getSettings: () => ipcRenderer.invoke('flux:get-settings'),
   saveSettings: patch => ipcRenderer.invoke('flux:save-settings', patch),
   testNotification: () => ipcRenderer.invoke('flux:test-notification'),
+  openNotificationSettings: () => ipcRenderer.invoke('flux:open-notification-settings'),
   checkGithub: () => ipcRenderer.invoke('flux:check-github'),
   checkLinearKey: key => ipcRenderer.invoke('flux:check-linear-key', key),
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),

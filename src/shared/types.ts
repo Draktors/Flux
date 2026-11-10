@@ -171,6 +171,7 @@ export interface FluxApi {
   getSettings(): Promise<Settings>
   saveSettings(patch: SettingsPatch): Promise<void>
   testNotification(): Promise<void>
+  openNotificationSettings(): Promise<void>
   checkGithub(): Promise<CheckResult>
   checkLinearKey(key: string): Promise<CheckResult>
   checkCalendarUrl(url: string): Promise<CheckResult>

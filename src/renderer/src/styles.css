@@ -1385,3 +1385,40 @@ button.chip:hover {
     scroll-behavior: auto !important;
   }
 }
+
+/* Logos de destination */
+
+.brand-icon {
+  flex: none;
+  vertical-align: -0.125em;
+}
+
+.prose a .brand-icon {
+  margin-right: 0.3em;
+  opacity: 0.85;
+}
+
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.settings .label-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.onboarding-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.onboarding-help {
+  color: var(--text-3);
+  font-size: 12.5px;
+}

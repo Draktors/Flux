@@ -2,6 +2,8 @@ import { X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import type { Settings, SettingsPatch } from '../../shared/types'
 
+import { BrandIcon } from './Brand'
+
 type TextKey = Exclude<keyof SettingsPatch, 'onboarded'>
 
 export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay(): void }) {
@@ -49,7 +51,10 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
       </header>
 
       <label>
-        Clef API Linear
+        <span className="label-title">
+          <BrandIcon brand="linear" size={13} />
+          Clef API Linear
+        </span>
         <input
           type="password"
           autoComplete="off"
@@ -60,7 +65,10 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
       </label>
 
       <label>
-        Adresse iCal secrète de ton agenda
+        <span className="label-title">
+          <BrandIcon brand="calendar" size={13} />
+          Adresse iCal secrète de ton agenda
+        </span>
         <input
           type="password"
           autoComplete="off"
@@ -94,6 +102,14 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
           onClick={() => void window.flux.testNotification()}
         >
           Tester une notification
+        </button>
+        <button
+          type="button"
+          className="pill glass small"
+          title="Si l’essai ne s’affiche pas, autorise Flux dans Réglages Système → Notifications"
+          onClick={() => void window.flux.openNotificationSettings()}
+        >
+          Réglages macOS
         </button>
         <button type="button" className="pill glass small" onClick={onReplay}>
           Revoir l’accueil

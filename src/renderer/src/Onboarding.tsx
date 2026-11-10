@@ -1,11 +1,10 @@
 import {
   ArrowRight,
-  CalendarDays,
+  BellRing,
   Check,
   CircleAlert,
-  GitPullRequest,
   LoaderCircle,
-  SquareKanban,
+  Settings2,
   Waves,
   type LucideIcon,
 } from 'lucide-react'
@@ -13,14 +12,16 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import type { CheckResult, Rank, Settings } from '../../shared/types'
 
+import { BrandIcon, type Brand } from './Brand'
 import { rankStyle, tint, type RankStyle } from './rankStyle'
 
 type SecretKey = 'linearKey' | 'calendarUrl'
 
 interface Step {
-  key: 'welcome' | 'github' | 'linear' | 'calendar' | 'done'
+  key: 'welcome' | 'github' | 'linear' | 'calendar' | 'notifications' | 'done'
   rank: Rank
-  icon: LucideIcon
+  // A brand logo for the services Flux connects to, a lucide glyph otherwise
+  icon: LucideIcon | Brand
   eyebrow: string
   title: string
   text: string
@@ -40,7 +41,7 @@ const STEPS: Step[] = [
   {
     key: 'github',
     rank: 2,
-    icon: GitPullRequest,
+    icon: 'github',
     eyebrow: 'Connexion 1 sur 3',
     title: 'GitHub',
     text: 'Flux lit tes PR avec la CLI gh déjà connectée sur ce Mac : aucune clef à saisir ici.',
@@ -48,7 +49,7 @@ const STEPS: Step[] = [
   {
     key: 'linear',
     rank: 5,
-    icon: SquareKanban,
+    icon: 'linear',
     eyebrow: 'Connexion 2 sur 3',
     title: 'Linear',
     text: 'Une clef personnelle pour suivre les tickets cités par tes sujets et tes mentions.',
@@ -62,7 +63,7 @@ const STEPS: Step[] = [
   {
     key: 'calendar',
     rank: 3,
-    icon: CalendarDays,
+    icon: 'calendar',
     eyebrow: 'Connexion 3 sur 3',
     title: 'Agenda',
     text: 'L’adresse iCal secrète de ton agenda : Flux se tait pendant tes réunions et te montre la suivante.',
@@ -72,6 +73,15 @@ const STEPS: Step[] = [
       placeholder: 'https://calendar.google.com/…/basic.ics',
       saved: settings => settings.hasCalendarUrl,
     },
+  },
+  {
+    key: 'notifications',
+    rank: 1,
+    icon: BellRing,
+    eyebrow: 'Dernier réglage',
+    title: 'Notifications',
+    text: 'Flux te prévient quand un sujet passe devant. Envoie un essai : la première fois, macOS te demande l’autorisation, clique sur Autoriser.',
+    help: 'Rien ne s’affiche ? Flux est sans doute refusé dans Réglages Système → Notifications.',
   },
   {
     key: 'done',
@@ -206,7 +216,11 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
 
         <div className="onboarding-step" key={step.key}>
           <span className="onboarding-icon">
-            <Icon size={26} strokeWidth={2.2} aria-hidden="true" />
+            {typeof Icon === 'string' ? (
+              <BrandIcon brand={Icon} size={26} />
+            ) : (
+              <Icon size={26} strokeWidth={2.2} aria-hidden="true" />
+            )}
           </span>
           <p className="onboarding-eyebrow">{step.eyebrow}</p>
           <h1>{step.title}</h1>
@@ -249,6 +263,30 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
             </label>
           )}
           {step.secret && <StatusLine status={status} />}
+
+          {step.key === 'notifications' && (
+            <>
+              <div className="onboarding-buttons">
+                <button
+                  type="button"
+                  className="pill glass small"
+                  onClick={() => void window.flux.testNotification()}
+                >
+                  <BellRing size={15} aria-hidden="true" />
+                  Envoyer un essai
+                </button>
+                <button
+                  type="button"
+                  className="pill glass small"
+                  onClick={() => void window.flux.openNotificationSettings()}
+                >
+                  <Settings2 size={15} aria-hidden="true" />
+                  Ouvrir les réglages
+                </button>
+              </div>
+              <small className="onboarding-help">{step.help}</small>
+            </>
+          )}
 
           {step.key === 'done' && (
             <ul className="onboarding-summary">

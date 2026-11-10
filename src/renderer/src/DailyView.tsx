@@ -1,6 +1,7 @@
-import { BookOpen, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { DailyState } from '../../shared/types'
+import { BrandIcon } from './Brand'
 import { Prose } from './Markdown'
 
 function Empty({ daily }: { daily: DailyState }) {
@@ -33,7 +34,7 @@ export function DailyView({ daily }: { daily: DailyState }) {
           </button>
           {note && (
             <button type="button" className="pill glass small" onClick={() => void window.flux.openDaily()}>
-              <BookOpen size={14} aria-hidden="true" />
+              <BrandIcon brand="obsidian" size={14} />
               Ouvrir dans Obsidian
             </button>
           )}

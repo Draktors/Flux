@@ -2,6 +2,7 @@ import { Bot } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { RANKS } from '../../shared/ranks'
 import type { Item, Rank, TopicView } from '../../shared/types'
+import { LinkIcon } from './Brand'
 import { displayTitle, waitingFor } from './format'
 import { rankStyle, tint } from './rankStyle'
 
@@ -52,7 +53,10 @@ function LooseCard({ item }: { item: Item }) {
       onClick={() => void window.flux.openExternal(item.url)}
     >
       <span className="card-head">
-        <strong>{item.ref}</strong>
+        <strong className="card-link">
+          <LinkIcon url={item.url} size={12} />
+          {item.ref}
+        </strong>
       </span>
       <span className="card-title">{displayTitle(item.title)}</span>
     </button>

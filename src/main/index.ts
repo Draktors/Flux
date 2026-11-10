@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   app,
@@ -157,9 +158,26 @@ function registerCapture(): void {
   if (accelerator) globalShortcut.register(accelerator, openCapture)
 }
 
+// macOS drops notifications silently when the person refused them for this bundle id
+function bundleId(): string | null {
+  if (!app.isPackaged) return null
+  const plist = readFileSync(join(process.resourcesPath, '..', 'Info.plist'), 'utf8')
+  return /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1] ?? null
+}
+
+function openNotificationSettings(): Promise<void> {
+  const id = bundleId()
+  const pane = 'x-apple.systempreferences:com.apple.Notifications-Settings.extension'
+  return shell.openExternal(id ? `${pane}?id=${encodeURIComponent(id)}` : pane)
+}
+
 function notify(title: string, body: string, onClick: () => void): void {
   const notification = new Notification({ title, body, silent: false })
   liveNotifications.add(notification)
+  notification.on('failed', (_event, error) => {
+    liveNotifications.delete(notification)
+    console.error(`Notification refusée par macOS : ${error}`)
+  })
   notification.on('click', () => {
     liveNotifications.delete(notification)
     onClick()
@@ -230,6 +248,7 @@ function registerIpc(): void {
   ipcMain.handle('flux:test-notification', () => {
     notify('Flux', 'Les notifications arrivent bien.', () => openMain())
   })
+  ipcMain.handle('flux:open-notification-settings', () => openNotificationSettings())
   ipcMain.handle('flux:check-github', () => checkGithub())
   ipcMain.handle('flux:check-linear-key', (_event, key: string) => checkLinearKey(key))
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))

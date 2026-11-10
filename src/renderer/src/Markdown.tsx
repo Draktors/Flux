@@ -1,5 +1,6 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { LinkIcon } from './Brand'
 
 export function Prose({ source, className = 'prose' }: { source: string; className?: string }) {
   return (
@@ -16,6 +17,7 @@ export function Prose({ source, className = 'prose' }: { source: string; classNa
                 if (href) void window.flux.openExternal(href)
               }}
             >
+              <LinkIcon url={href} size={13} />
               {children}
             </a>
           ),

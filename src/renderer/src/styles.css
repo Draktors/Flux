@@ -5035,3 +5035,118 @@ li.chosen .project-check {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Scène Espaces : le sélecteur à côté du logo, et la page qui choisit les projets */
+
+.w-switch {
+  top: 20px;
+  display: flex;
+  width: 68px;
+  height: 24px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.2);
+}
+
+.w-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 32px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--solid);
+  animation: w-switch-slide 0.45s var(--ease) var(--d) forwards;
+}
+
+.w-switch-seg {
+  position: relative;
+  display: grid;
+  flex: 1;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.w-switch-seg.first {
+  color: var(--solid-ink);
+  animation: w-switch-off 0.45s var(--ease) var(--d) forwards;
+}
+
+.w-switch-seg.second {
+  color: var(--text-2);
+  animation: w-switch-on 0.45s var(--ease) var(--d) forwards;
+}
+
+@keyframes w-switch-slide {
+  to {
+    transform: translateX(32px);
+  }
+}
+
+@keyframes w-switch-off {
+  to {
+    color: var(--text-2);
+  }
+}
+
+@keyframes w-switch-on {
+  to {
+    color: var(--solid-ink);
+  }
+}
+
+.w-prow {
+  display: grid;
+  grid-template-columns: 18px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 294px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+}
+
+.w-prow > .w-box {
+  grid-area: 1 / 1;
+}
+
+.w-prow > b {
+  font-weight: 600;
+}
+
+.w-prow > span:last-child {
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w-prow.off {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.w-repo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 294px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.w-repo i {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(50, 215, 75, 0.16);
+  color: var(--ok);
+  font-size: 11px;
+  font-style: normal;
+}

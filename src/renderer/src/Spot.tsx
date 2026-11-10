@@ -138,16 +138,33 @@ function Tabs({ specs }: { specs: TabSpec[] }) {
   )
 }
 
+// The workspace switch beside the logo; the thumb slides to the second one at a given time
+function Switch({ labels, at }: { labels: [string, string]; at: number }) {
+  return (
+    <span className="w-switch" style={pos(160, 20)}>
+      <span className="w-switch-thumb" style={d(at)} />
+      <span className="w-switch-seg first" style={d(at)}>
+        {labels[0]}
+      </span>
+      <span className="w-switch-seg second" style={d(at)}>
+        {labels[1]}
+      </span>
+    </span>
+  )
+}
+
 function Chrome({
   specs,
   className = '',
   style,
   children,
+  switcher,
 }: {
   specs: TabSpec[]
   className?: string
   style?: CSSProperties
   children: ReactNode
+  switcher?: ReactNode
 }) {
   return (
     <div className={`w-window ${className}`} style={style}>
@@ -165,6 +182,7 @@ function Chrome({
           </span>
           Flux
         </span>
+        {switcher}
         <Tabs specs={specs} />
         <span className="w-round" style={pos(742, 14)}>
           <RefreshCw size={13} />
@@ -593,6 +611,79 @@ function ReviewsPicture() {
   )
 }
 
+// Two products of the same team: the site and the mobile app
+const WEB_QUEUE: Card[] = [
+  { ref: 'WEB-212', title: 'Nouveau tunnel de commande', meta: 'Mes sujets', rank: 6 },
+  { ref: 'site#418', title: 'Images en WebP sur le catalogue', meta: 'Review demandée', rank: 2 },
+  { ref: 'WEB-198', title: 'Bandeau cookies plus léger', meta: 'Prêt à déployer', rank: 4 },
+]
+const APP_QUEUE: Card[] = [
+  { ref: 'app#87', title: 'Centre de notifications', meta: 'Prêt à merger, sans review', rank: 4 },
+  { ref: 'APP-54', title: 'Connexion par lien magique', meta: 'Mes sujets', rank: 6 },
+  { ref: 'APP-61', title: 'Mode sombre des réglages', meta: 'À faire', rank: 6 },
+]
+const PROJECTS: Array<[key: string, name: string, state: 'on' | 'tick' | 'off']> = [
+  ['WEB', 'Site e-commerce', 'on'],
+  ['APP', 'Application mobile', 'on'],
+  ['API', 'Back-office', 'tick'],
+  ['OPS', 'Opérations', 'off'],
+]
+
+function WorkspacesPicture() {
+  const flip = 3.4
+  const tickAt = 9.3
+  return (
+    <Chrome specs={tabs({ File: { on: [0, 99], count: [3, 3, flip] } })} switcher={<Switch labels={['WEB', 'APP']} at={flip} />}>
+      <div className="w-layer w-out" style={d(flip)}>
+        <Hero
+          chip="Mes sujets"
+          rank={6}
+          title="Nouveau tunnel de commande"
+          meta="WEB-212 · Site e-commerce"
+          primary="Ouvrir dans Claude"
+          secondary="Voir le ticket"
+        />
+        <Rail cards={WEB_QUEUE} />
+      </div>
+      <div className="w-layer w-in" style={d(flip + 0.15)}>
+        <Hero
+          chip="Prêt à merger, sans review"
+          rank={4}
+          title="Intégrer le centre de notifications"
+          meta="app#87 · Application mobile"
+          primary="Livrer"
+          secondary="Voir la PR"
+        />
+        <Rail cards={APP_QUEUE} />
+      </div>
+
+      <div className="w-panel w-span" style={span(6.3, 12.6, pos(614, 76))}>
+        <span className="w-panel-title" style={pos(24, 20)}>
+          Espaces
+          <X size={14} />
+        </span>
+        <span className="w-panel-text" style={pos(24, 52)}>
+          Un espace par projet suivi.
+        </span>
+        {PROJECTS.map(([key, name, state], index) => (
+          <div key={key} className={`w-prow${state === 'off' ? ' off' : ''}`} style={pos(18, 84 + index * 44)}>
+            {state === 'on' ? <Box /> : state === 'tick' ? <Box at={tickAt} /> : <span className="w-box off" />}
+            <b>{key}</b>
+            <span>{name}</span>
+          </div>
+        ))}
+        <span className="w-label" style={pos(24, 274)}>
+          Dépôts · APP
+        </span>
+        <div className="w-repo" style={pos(18, 296)}>
+          <span>acme/app</span>
+          <i>Sans review</i>
+        </div>
+      </div>
+    </Chrome>
+  )
+}
+
 function OutroPicture() {
   return (
     <Chrome specs={tabs({ File: { on: [0, 99] } })} className="w-leave" style={d(1.3)}>
@@ -773,6 +864,53 @@ export const SCENES: Scene[] = [
       [8, 445, 34],
     ],
     Picture: ReviewsPicture,
+  },
+  {
+    id: 'workspaces',
+    rank: 3,
+    ms: 14000,
+    kicker: 'Espaces',
+    headline: 'Un produit à la fois.',
+    headlineUntil: 1.3,
+    captions: [
+      [1.3, 'Tu alternes entre deux produits ? Un clic suffit.'],
+      [4.2, 'Chaque espace a sa file, ses PR et son daily.'],
+      [6.8, 'Coche tes projets Jira ou Linear dans Espaces.'],
+      [10.2, 'Range-les à la main, ajoute leurs dépôts.'],
+    ],
+    cam: [
+      cam(1.2, GLOBAL),
+      [1.9, 2.1, 200, 40],
+      [3.9, 2.1, 200, 40],
+      cam(4.6, WHOLE),
+      cam(6.2, WHOLE),
+      [6.9, 1.35, 779, 280],
+      [12.2, 1.35, 779, 280],
+      cam(12.8, WHOLE),
+    ],
+    cursor: [
+      [0, 700, 560, 0],
+      [1.2, 700, 560],
+      [2.4, 210, 32],
+      [3.2, 210, 32],
+      [4.4, 520, 300],
+      [5.6, 926, 32],
+      [7.4, 700, 220],
+      [8.8, 652, 260],
+      [9.2, 652, 260],
+      [11.4, 720, 380],
+      [13, 760, 520],
+    ],
+    clicks: [
+      [3.3, 210, 32],
+      [5.9, 926, 32],
+      [9.25, 652, 260],
+    ],
+    focus: [
+      [1.9, 4, 156, 16, 76, 32, 16],
+      [7, 12.2, 614, 76, 330, 370, 20],
+    ],
+    Picture: WorkspacesPicture,
   },
   {
     id: 'outro',

@@ -4,6 +4,12 @@ import { SCENES, Spot } from './Spot'
 
 // Newest first, one line each: the id of the first entry marks what was read
 const ENTRIES: Array<{ id: string; date: string; text: string; scene?: string }> = [
+  { id: '2026-11-10-workspaces', date: '10 nov.', text: 'Un espace par projet Jira ou Linear', scene: 'workspaces' },
+  { id: '2026-11-10-trackers', date: '10 nov.', text: 'Jira ou Linear en gestion de projet, au choix', scene: 'workspaces' },
+  { id: '2026-11-10-github-accounts', date: '10 nov.', text: 'Plusieurs comptes GitHub, choisis dans les réglages' },
+  { id: '2026-11-10-no-review', date: '10 nov.', text: 'Dépôts sans review : tes PR prêtes à livrer', scene: 'workspaces' },
+  { id: '2026-11-10-daily-workspace', date: '10 nov.', text: 'Un daily par espace, avec commits, réunions et stand-up', scene: 'daily' },
+  { id: '2026-11-10-calls', date: '10 nov.', text: 'Calls Granola rangés par type et par produit' },
   { id: '2026-11-10-daily', date: '10 nov.', text: 'Daily refait, en blocs courts', scene: 'daily' },
   { id: '2026-11-10-intentions', date: '10 nov.', text: 'Intentions du jour réordonnables', scene: 'daily' },
   { id: '2026-11-10-health', date: '10 nov.', text: 'Santé prod d’un regard', scene: 'daily' },

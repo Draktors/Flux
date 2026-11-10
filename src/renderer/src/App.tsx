@@ -1,4 +1,4 @@
-import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
+import { CalendarClock, CloudOff, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AppState, SourceName, TopicView } from '../../shared/types'
 import type { CallsState } from '../../shared/calls'
@@ -206,11 +206,14 @@ export function App() {
   // Before its first answer a source is just loading: only an unconfigured one asks to connect
   const toConnect = failing.filter(name => state.sources[name]?.missing)
   const offline = failing.filter(name => state.sources[name]?.error && !state.sources[name]?.missing)
+  // The title gives way to the time when the bar runs short
   const meeting = state.meeting.current
-    ? `En réunion : ${state.meeting.current.title}`
+    ? { title: state.meeting.current.title, when: 'en cours' }
     : state.meeting.next
-      ? `${state.meeting.next.title} ${until(state.meeting.next.start)}`
+      ? { title: state.meeting.next.title, when: until(state.meeting.next.start) }
       : null
+  const offlineLabel = offline.map(name => SOURCE_LABEL[name]).join(', ')
+  const connectLabel = toConnect.map(name => SOURCE_LABEL[name]).join(', ')
   const unreadDaily = state.daily.status === 'ready' && readDate !== state.daily.date
   const index = list.findIndex(view => view.topic.id === currentId)
   const position = tab === 'queue' && index >= 0 ? `${index + 1} sur ${list.length}` : null
@@ -266,20 +269,27 @@ export function App() {
 
         <div className="topbar-end">
           {meeting && (
-            <span className="chip glass">
+            <span className="chip glass meeting" title={`${meeting.title} ${meeting.when}`}>
               <CalendarClock size={14} aria-hidden="true" />
-              {meeting}
+              <span className="chip-text">{meeting.title}</span>
+              <span className="chip-when">{meeting.when}</span>
             </span>
           )}
           {offline.length > 0 && (
-            <span className="chip glass warn">
-              Hors ligne : {offline.map(name => SOURCE_LABEL[name]).join(', ')}
+            <span className="chip glass warn compact" title={`Hors ligne : ${offlineLabel}`}>
+              <CloudOff size={14} aria-hidden="true" />
+              <span className="chip-text">Hors ligne</span>
             </span>
           )}
           {toConnect.length > 0 && (
-            <button type="button" className="chip glass" onClick={() => setSettingsOpen(true)}>
+            <button
+              type="button"
+              className="chip glass compact"
+              title={`Connecter ${connectLabel}`}
+              onClick={() => setSettingsOpen(true)}
+            >
               <Plug size={14} aria-hidden="true" />
-              Connecter {toConnect.map(name => SOURCE_LABEL[name]).join(', ')}
+              <span className="chip-text">Connecter</span>
             </button>
           )}
           <button type="button" className="pill glass" onClick={() => void window.flux.openCapture()}>

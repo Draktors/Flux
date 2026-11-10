@@ -14,6 +14,8 @@ export interface Workspace {
   short?: string;
   // Jira project keys whose tickets belong to this workspace
   jiraProjects: string[];
+  // Words that name the product in a call title or summary (Communicity, citopia…)
+  keywords?: string[];
   github: {
     // Organisation the repos live in; falls back to github.owner
     owner?: string;
@@ -43,6 +45,8 @@ export interface FluxConfig {
   };
   // Products you switch between; empty means a single view of everything
   workspaces: Workspace[];
+  // Alternation between workspaces: from start (a Monday), each one lasts weeks, in order
+  rotation: { start: string; weeks: number; order: string[] } | null;
   paths: {
     // Notes vault holding topics (flux/) and daily notes (daily/)
     vault: string;
@@ -66,6 +70,7 @@ export const DEFAULT_CONFIG: FluxConfig = {
   linear: { teams: [] },
   jira: { site: "" },
   workspaces: [],
+  rotation: null,
   paths: {
     vault: join(HOME, "Documents/Flux"),
     repos: join(HOME, "code"),
@@ -86,6 +91,11 @@ function expand(path: string): string {
   return isAbsolute(path) ? path : join(HOME, path);
 }
 
+function rotationOf(raw: Partial<NonNullable<FluxConfig["rotation"]>> | null | undefined) {
+  if (!raw?.start || !raw.order?.length) return null;
+  return { start: raw.start, weeks: Math.max(1, raw.weeks ?? 2), order: raw.order };
+}
+
 export function mergeConfig(overrides: Overrides): FluxConfig {
   const paths = { ...DEFAULT_CONFIG.paths, ...overrides.paths };
   return {
@@ -98,6 +108,7 @@ export function mergeConfig(overrides: Overrides): FluxConfig {
       jiraProjects: (workspace.jiraProjects ?? []).map(key => key.toUpperCase()),
       github: { ...workspace.github },
     })),
+    rotation: rotationOf(overrides.rotation),
     paths: {
       vault: expand(paths.vault),
       repos: expand(paths.repos),

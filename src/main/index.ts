@@ -12,6 +12,8 @@ import {
   Tray,
 } from 'electron'
 import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
+import type { CallPatch } from '../shared/calls'
+import { Calls } from './calls/service'
 import { Flux } from './engine/poller'
 import { Daily } from './llm/daily'
 import { Triage } from './llm/triage'
@@ -35,6 +37,7 @@ let tray: Tray | null = null
 let flux: Flux
 let settings: SettingsStore
 let daily: Daily
+let calls: Calls
 const liveNotifications = new Set<Notification>()
 
 function pageUrl(hash = ''): { url?: string; file?: string } {
@@ -191,7 +194,9 @@ function requireTopic(id: string): Topic {
 
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
-  ipcMain.handle('flux:refresh', () => flux.refresh())
+  ipcMain.handle('flux:refresh', async () => {
+    await Promise.all([flux.refresh(), calls.sync()])
+  })
   ipcMain.handle('flux:create-note', async (_event, text: string) => {
     if (text.trim()) await flux.addTopic(noteFromText(text, new Date()))
     captureWindow?.close()
@@ -257,6 +262,11 @@ function registerIpc(): void {
     checkJira(site, email, token),
   )
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
+  ipcMain.handle('flux:get-calls', () => calls.state())
+  ipcMain.handle('flux:update-call', (_event, id: string, patch: CallPatch) => calls.update(id, patch))
+  ipcMain.handle('flux:sync-calls', () => calls.sync())
+  ipcMain.handle('flux:connect-granola', () => calls.connect(url => void shell.openExternal(url)))
+  ipcMain.handle('flux:disconnect-granola', () => calls.disconnect())
   ipcMain.handle('flux:run-daily', () => daily.run(new Date()))
   ipcMain.handle('flux:read-daily', () => daily.read(new Date()))
   ipcMain.handle('flux:open-daily', () => {
@@ -277,6 +287,9 @@ async function main(): Promise<void> {
     state => flux.setDaily(state),
     () => notifyDaily(),
   )
+  calls = new Calls(settings, state => {
+    for (const window of BrowserWindow.getAllWindows()) window.webContents.send('flux:calls', state)
+  })
   const store = new TopicStore(TOPICS_DIR, ARCHIVE_DIR)
   flux = new Flux(store, settings, {
     onState(state) {
@@ -328,7 +341,9 @@ async function main(): Promise<void> {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll()
     flux.stop()
+    calls.stop()
   })
+  calls.start()
   await flux.start()
 }
 

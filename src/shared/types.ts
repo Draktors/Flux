@@ -1,3 +1,4 @@
+import type { CallPatch, CallsState } from './calls'
 import type { CalendarName } from './calendars'
 import type { TrackerName } from './trackers'
 
@@ -204,6 +205,12 @@ export interface FluxApi {
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void
   onRefreshShortcut(listener: () => void): () => void
+  getCalls(): Promise<CallsState>
+  onCalls(listener: (state: CallsState) => void): () => void
+  updateCall(id: string, patch: CallPatch): Promise<void>
+  syncCalls(): Promise<void>
+  connectGranola(): Promise<void>
+  disconnectGranola(): Promise<void>
   refresh(): Promise<void>
   createNote(text: string): Promise<void>
   openCapture(): Promise<void>

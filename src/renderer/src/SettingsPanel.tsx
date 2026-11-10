@@ -1,9 +1,10 @@
-import { AtSign, CalendarDays, Check, Globe, Keyboard, KeyRound, X, type LucideIcon } from 'lucide-react'
+import { AtSign, CalendarDays, Check, Globe, Keyboard, KeyRound, Mic, X, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
 import { TimePicker } from './TimePicker'
 import { AddCalendarMenu, AddTrackerMenu, TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 import { calendarInfo } from '../../shared/calendars'
+import type { GranolaStatus } from '../../shared/calls'
 import type { TrackerName } from '../../shared/trackers'
 import { useEffect, useState, type FormEvent } from 'react'
 import type { GithubAccounts, Settings, SettingsPatch } from '../../shared/types'
@@ -46,6 +47,12 @@ export function SettingsPanel({
   const [patch, setPatch] = useState<SettingsPatch>({})
   const [saving, setSaving] = useState(false)
   const [accounts, setAccounts] = useState<GithubAccounts | null>(lastAccounts)
+  const [granola, setGranola] = useState<GranolaStatus | null>(null)
+
+  useEffect(() => {
+    void window.flux.getCalls().then(state => setGranola(state.granola))
+    return window.flux.onCalls(state => setGranola(state.granola))
+  }, [])
 
   useEffect(() => {
     void window.flux.getSettings().then(setSettings)
@@ -191,6 +198,44 @@ export function SettingsPanel({
           </div>
         ))}
         <AddTrackerMenu chosen={trackers} onAdd={name => setTrackers([...trackers, name])} />
+      </section>
+
+      <section className="field trackers">
+        <span>Transcriptions</span>
+        <div className="tracker-card">
+          <header>
+            <span className="tracker-badge granola-badge" aria-hidden="true">
+              <Mic size={15} />
+            </span>
+            <span className="tracker-name">
+              <strong>Granola</strong>
+              <small>
+                {granola?.connected
+                  ? `Connecté${granola.email ? ` en tant que ${granola.email}` : ''}`
+                  : 'Résumés de tes calls, rangés par type et par produit'}
+              </small>
+            </span>
+            {granola?.connected ? (
+              <button
+                type="button"
+                className="pill glass small"
+                onClick={() => void window.flux.disconnectGranola()}
+              >
+                Déconnecter
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="pill solid small"
+                disabled={granola?.connecting}
+                onClick={() => void window.flux.connectGranola().catch(() => undefined)}
+              >
+                {granola?.connecting ? 'Dans ton navigateur…' : 'Connecter'}
+              </button>
+            )}
+          </header>
+          {granola?.error && !granola.connecting && <small className="settings-error">{granola.error}</small>}
+        </div>
       </section>
 
       <section className="field trackers">

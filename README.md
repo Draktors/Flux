@@ -57,6 +57,8 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
 - `linear.teams` liste les clefs d'équipe reconnues dans les titres et les branches ; vide, toute clef `ABC-123` en majuscules compte.
 - `jira.site` est le site Atlassian par défaut ; le site saisi dans les Réglages a la priorité, avec l'e-mail et le jeton API.
 - `workspaces` liste les produits sur lesquels tu alternes. Avec deux espaces ou plus, un sélecteur apparaît à côté du logo : Flux ne lit alors que les tickets Jira de `jiraProjects` et les PR de `github.repos` (ou de toute l'organisation `github.owner` sans liste). Les sujets dont tous les liens appartiennent à l'autre espace sont masqués, les notes libres restent visibles partout. Sans `workspaces`, Flux montre tout.
+- `workspaces[].keywords` ajoute des mots qui désignent un produit dans le titre ou le résumé d'un call Granola (en plus de son nom, de son nom court et de ses projets Jira).
+- `rotation` décrit ton alternance : `{ "start": "2026-11-09", "weeks": 2, "order": ["cc", "pp"] }` veut dire deux semaines sur CC à partir de ce lundi, puis deux sur PP. Quand rien dans un call ne nomme le produit, Flux prend celui de la semaine et le marque « À vérifier ».
 - `paths.vault` contient les sujets (`flux/`) et les daily (`daily/`) ; `paths.repos` contient les clones où s'ouvrent les threads.
 - `prompts` remplace le prompt d'une action (`take-comments`, `review`, `ticket`, `diagnostic`, `cadrage`…), avec `{url}` et `{ref}`.
 

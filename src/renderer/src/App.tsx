@@ -1,6 +1,8 @@
 import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { AppState, SourceName, TopicView } from '../../shared/types'
+import type { CallsState } from '../../shared/calls'
+import { CallsView } from './CallsView'
 import { DailyView } from './DailyView'
 import { until } from './format'
 import { Hero } from './Hero'
@@ -14,7 +16,7 @@ import { Stage } from './Stage'
 import { useSeen } from './useSeen'
 
 type ListTab = 'queue' | 'active' | 'waiting' | 'notes' | 'dormant'
-type Tab = ListTab | 'daily'
+type Tab = ListTab | 'daily' | 'calls'
 
 const DAILY_READ_KEY = 'flux.dailyRead'
 
@@ -64,6 +66,7 @@ function markDailyRead(date: string): void {
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null)
+  const [callsState, setCallsState] = useState<CallsState | null>(null)
   const [tab, setTab] = useState<Tab>('queue')
   const [selected, setSelected] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -113,6 +116,11 @@ export function App() {
     return window.flux.onState(setState)
   }, [])
 
+  useEffect(() => {
+    void window.flux.getCalls().then(setCallsState)
+    return window.flux.onCalls(setCallsState)
+  }, [])
+
   useEffect(
     () =>
       window.flux.onOpenTopic(id => {
@@ -138,7 +146,7 @@ export function App() {
   }, [tab, state?.daily.status, state?.daily.date])
 
   const views = useMemo(() => (state ? allViews(state) : []), [state])
-  const listTab: ListTab = tab === 'daily' ? 'queue' : tab
+  const listTab: ListTab = tab === 'daily' || tab === 'calls' ? 'queue' : tab
   const list = state ? state[listTab] : []
   const current =
     (tab !== 'daily' && list.find(view => view.topic.id === selected)) ||
@@ -151,7 +159,7 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || tab === 'daily' || settingsOpen) return
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || tab === 'daily' || tab === 'calls' || settingsOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       const index = list.findIndex(view => view.topic.id === currentId)
       const next = list[index + (event.key === 'ArrowRight' ? 1 : -1)]
@@ -189,6 +197,7 @@ export function App() {
     { key: 'waiting', label: 'Attente', count: state.waiting.length + state.loose.length },
     { key: 'notes', label: 'Notes', count: state.notes.length },
     { key: 'dormant', label: 'Dormant', count: state.dormant.length },
+    { key: 'calls', label: 'Calls', count: callsState?.calls.filter(call => call.uncertain).length ?? 0 },
     { key: 'daily', label: 'Daily', count: 0 },
   ]
   const failing = (Object.keys(state.sources) as SourceName[]).filter(
@@ -299,7 +308,11 @@ export function App() {
         </div>
       </header>
 
-      {tab === 'daily' ? (
+      {tab === 'calls' ? (
+        callsState && (
+          <CallsView state={callsState} workspace={switching ?? state.workspace} workspaces={state.workspaces} />
+        )
+      ) : tab === 'daily' ? (
         <DailyView daily={state.daily} />
       ) : (
         <>

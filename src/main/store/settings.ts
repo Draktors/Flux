@@ -8,7 +8,7 @@ import { CONFIG } from '../config'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
 import { resolveWorkspace } from '../workspaces'
 
-type Secret = 'linearKey' | 'calendarUrl' | 'jiraToken'
+type Secret = 'linearKey' | 'calendarUrl' | 'jiraToken' | 'granola'
 
 interface Stored {
   dailyTime: string
@@ -104,6 +104,13 @@ export class SettingsStore {
       calendar: this.calendar(),
       workspace: resolveWorkspace(CONFIG.workspaces, this.stored.workspace)?.id ?? null,
     }
+  }
+
+  // Secrets Flux writes itself, outside the settings panel (Granola's session)
+  setSecret(name: Secret, value: string | null): void {
+    if (value === null) delete this.secrets[name]
+    else this.secrets[name] = safeStorage.encryptString(value).toString('base64')
+    writeJson(SECRETS_FILE, this.secrets, 0o600)
   }
 
   apply(patch: SettingsPatch): void {

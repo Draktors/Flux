@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CallsState } from '../shared/calls'
 import type { AppState, FluxApi } from '../shared/types'
 
 const api: FluxApi = {
@@ -23,6 +24,16 @@ const api: FluxApi = {
     ipcRenderer.on('flux:refresh-shortcut', handler)
     return () => ipcRenderer.removeListener('flux:refresh-shortcut', handler)
   },
+  getCalls: () => ipcRenderer.invoke('flux:get-calls'),
+  onCalls(listener) {
+    const handler = (_event: unknown, state: CallsState) => listener(state)
+    ipcRenderer.on('flux:calls', handler)
+    return () => ipcRenderer.removeListener('flux:calls', handler)
+  },
+  updateCall: (id, patch) => ipcRenderer.invoke('flux:update-call', id, patch),
+  syncCalls: () => ipcRenderer.invoke('flux:sync-calls'),
+  connectGranola: () => ipcRenderer.invoke('flux:connect-granola'),
+  disconnectGranola: () => ipcRenderer.invoke('flux:disconnect-granola'),
   refresh: () => ipcRenderer.invoke('flux:refresh'),
   createNote: text => ipcRenderer.invoke('flux:create-note', text),
   openCapture: () => ipcRenderer.invoke('flux:open-capture'),

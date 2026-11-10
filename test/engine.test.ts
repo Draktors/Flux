@@ -99,6 +99,20 @@ describe('file sur les données réelles du 06/11', () => {
 })
 
 describe('règles unitaires', () => {
+  it('rend à moi une PR sans review nécessaire, prête à merger', () => {
+    const mine = pr({ author: ME, repo: 'cc-mobile', reviewDecision: null, ci: 'SUCCESS', mergeStateStatus: 'BLOCKED' })
+    const item = itemFromPullRequest(mine, { ...context, noReview: new Set(['cc-mobile']) })
+    expect(item.ball).toBe('me')
+    expect(item.signals[0]).toMatchObject({ rank: 4, action: 'ship' })
+    expect(itemFromPullRequest(mine, context).ball).toBe('others')
+  })
+
+  it('garde un brouillon en brouillon, même sans review', () => {
+    const draft = pr({ author: ME, repo: 'cc-mobile', isDraft: true })
+    const item = itemFromPullRequest(draft, { ...context, noReview: new Set(['cc-mobile']) })
+    expect(item.signals[0]).toMatchObject({ rank: 6, detail: 'Brouillon' })
+  })
+
   it("n'alerte pas sur une review en cours de rédaction", () => {
     const item = itemFromPullRequest(
       pr({

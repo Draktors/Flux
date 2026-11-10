@@ -20,6 +20,8 @@ export interface Workspace {
     owner?: string;
     // Repo names (or owner/name); empty means every repo of the owner
     repos?: string[];
+    // Repos where your PRs merge without a review: an open PR is yours to ship, not waiting on anyone
+    noReview?: string[];
   };
 }
 

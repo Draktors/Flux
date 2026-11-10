@@ -83,6 +83,8 @@ export interface Ticket {
 export interface RankContext {
   me: string
   now: Date
+  // Repo names (as in cc-mobile#12) where your PRs need no review
+  noReview?: Set<string>
 }
 
 export function ticketKeys(text: string): string[] {
@@ -150,7 +152,7 @@ function pendingReviewSignal(pr: PullRequest, ref: string, { now }: RankContext)
   )
 }
 
-function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[] {
+function mineSignals(pr: PullRequest, ref: string, { me, noReview }: RankContext): Signal[] {
   const open = pr.threads.filter(thread => !thread.resolved)
   const human = open.filter(thread => isHuman(thread.lastAuthor, me))
   if (human.length > 0) {
@@ -173,6 +175,17 @@ function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[
   }
   if (pr.isDraft) return [signal(ref, 'draft', 6, 'Brouillon', 'fix-pr', pr.updatedAt)]
   if (pr.ci === 'FAILURE') return [signal(ref, 'ci', 6, 'CI en échec', 'fix-pr', pr.updatedAt)]
+
+  // Nobody reviews in this repo: once CI is not failing, the PR is yours to merge
+  if (noReview?.has(pr.repo.toLowerCase()) && pr.reviewDecision !== 'APPROVED') {
+    if (pr.mergeStateStatus === 'DIRTY') {
+      return [signal(ref, 'conflict', 6, 'Conflits à résoudre', 'fix-pr', pr.updatedAt)]
+    }
+    if (pr.mergeStateStatus === 'BEHIND') {
+      return [signal(ref, 'behind', 6, 'À rebaser', 'fix-pr', pr.updatedAt)]
+    }
+    return [signal(ref, 'ready', 4, 'Prêt à merger, sans review', 'ship', pr.updatedAt)]
+  }
 
   if (pr.reviewDecision === 'APPROVED' && pr.ci === 'SUCCESS') {
     if (pr.mergeStateStatus === 'CLEAN') {

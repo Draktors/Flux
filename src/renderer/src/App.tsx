@@ -341,7 +341,7 @@ export function App() {
             <span className="brand-mark glass">
               <Waves size={16} strokeWidth={2.4} aria-hidden="true" />
             </span>
-            Flux
+            <span className="brand-name">Flux</span>
             {state.workspaces.length > 1 && (
               <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
                 {state.workspaces.map(workspace => (

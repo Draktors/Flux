@@ -40,8 +40,8 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
   "linear": { "teams": ["APP", "WEB"] },
   "jira": { "site": "https://acme.atlassian.net" },
   "workspaces": [
-    { "id": "pp", "label": "PanneauPocket", "short": "PP", "jiraProjects": ["PP"], "github": { "owner": "acme", "repos": ["pp-api", "pp-app"] } },
-    { "id": "cc", "label": "Communicity", "short": "CC", "jiraProjects": ["CC"], "github": { "owner": "acme", "repos": ["cc-web"] } }
+    { "id": "web", "label": "Site e-commerce", "short": "WEB", "jiraProjects": ["WEB"], "github": { "owner": "acme", "repos": ["site", "site-api"] } },
+    { "id": "app", "label": "Application mobile", "short": "APP", "jiraProjects": ["APP"], "github": { "owner": "acme", "repos": ["app"] } }
   ],
   "paths": {
     "vault": "~/Notes",
@@ -53,7 +53,7 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
 }
 ```
 
-- `workspaces[].github.noReview` liste les dépôts où tes PR s'intègrent sans review (ex. `["cc-mobile"]`) : une PR ouverte y passe en « Prêt à livrer » au lieu d'attendre une relecture.
+- `workspaces[].github.noReview` liste les dépôts où tes PR s'intègrent sans review (ex. `["app"]`) : une PR ouverte y passe en « Prêt à livrer » au lieu d'attendre une relecture.
 - `github.owner` limite la file aux dépôts d'une organisation ; vide, Flux prend toutes les PR qui t'impliquent.
 - `github.bots` liste les logins dont les commentaires ne comptent pas comme un humain qui t'attend.
 - `linear.teams` liste les clefs d'équipe reconnues dans les titres et les branches ; vide, toute clef `ABC-123` en majuscules compte.

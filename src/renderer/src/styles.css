@@ -4287,7 +4287,7 @@ button.ref-pill:hover {
   color: var(--text-3);
   font-size: 12.5px;
 
-/* Espace de travail (PanneauPocket / Communicity) */
+/* Espace de travail (le sélecteur WEB / APP à côté du logo) */
 
 .workspace-switch {
   margin-left: 6px;

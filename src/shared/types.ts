@@ -324,7 +324,7 @@ export interface AppState {
 // A Jira project or Linear team you follow: each one becomes a workspace you switch to
 export interface TrackedProject {
   tracker: TrackerName
-  // Project or team key, e.g. DEVPP or APP
+  // Project or team key, e.g. WEB or APP
   key: string
   name: string
   // GitHub repos (owner/name) whose PRs belong to this project

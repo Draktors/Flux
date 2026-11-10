@@ -83,7 +83,7 @@ export interface Ticket {
 export interface RankContext {
   me: string
   now: Date
-  // Repo names (as in cc-mobile#12) where your PRs need no review
+  // Repo names (as in app#12) where your PRs need no review
   noReview?: Set<string>
 }
 

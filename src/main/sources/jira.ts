@@ -125,3 +125,22 @@ export async function checkJira(credentials: JiraCredentials): Promise<string> {
   const me = await call<{ displayName: string }>(credentials, '/rest/api/3/myself')
   return me.displayName
 }
+
+// Projects you can see, for picking the ones you work on
+export async function listJiraProjects(
+  credentials: JiraCredentials,
+): Promise<Array<{ key: string; name: string }>> {
+  const projects: Array<{ key: string; name: string }> = []
+  let startAt = 0
+  for (let page = 0; page < 5; page++) {
+    const result = await call<{
+      values: Array<{ key: string; name: string }>
+      isLast?: boolean
+      total?: number
+    }>(credentials, `/rest/api/3/project/search?maxResults=100&orderBy=name&startAt=${startAt}`)
+    projects.push(...result.values.map(({ key, name }) => ({ key, name })))
+    if (result.isLast !== false || result.values.length === 0) break
+    startAt += result.values.length
+  }
+  return projects
+}

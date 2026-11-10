@@ -20,7 +20,7 @@ import { fetchAgents } from '../sources/agents'
 import { fetchGithub, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
-import { githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
+import { allWorkspaces, githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
 import { compareViews, reconcile, type LiveSession } from './ball'
 import { decide, EMPTY_NOTIFY_STATE, type FluxNotification, type NotifyState } from './notify'
 import { itemFromPullRequest, itemFromTicket, type Ticket } from './rank'
@@ -189,7 +189,7 @@ export class Flux {
   }
 
   private workspace() {
-    return resolveWorkspace(CONFIG.workspaces, this.settings.values.workspace)
+    return resolveWorkspace(allWorkspaces(), this.settings.values.workspace)
   }
 
   private cache(id: string | null = this.workspace()?.id ?? null): WorkspaceCache {
@@ -203,6 +203,13 @@ export class Flux {
   }
 
   // The view comes from the cache at once; the active workspace refreshes behind it
+  // Projects changed: other workspaces may now cover other repos, so their data is read again
+  // (the next tick fetches every workspace it has nothing for); the visible one stays on screen
+  forgetOtherWorkspaces(): void {
+    const visible = this.workspace()?.id ?? ''
+    for (const key of [...this.caches.keys()]) if (key !== visible) this.caches.delete(key)
+  }
+
   async switchWorkspace(): Promise<void> {
     await this.rebuild()
     void this.tick()
@@ -253,8 +260,8 @@ export class Flux {
       const keys = refs.filter(ref => !ref.includes('#'))
       const background =
         this.tickCount % BACKGROUND_EVERY_TICKS === 0
-          ? CONFIG.workspaces.filter(entry => entry.id !== workspace?.id)
-          : CONFIG.workspaces.filter(
+          ? allWorkspaces().filter(entry => entry.id !== workspace?.id)
+          : allWorkspaces().filter(
               entry => entry.id !== workspace?.id && !this.cache(entry.id).github,
             )
 
@@ -308,7 +315,7 @@ export class Flux {
 
   private refsFor(workspace: Workspace | null): string[] {
     return this.topics
-      .filter(topic => topic.status !== 'done' && topicVisible(topic, workspace, CONFIG.workspaces))
+      .filter(topic => topic.status !== 'done' && topicVisible(topic, workspace, allWorkspaces()))
       .flatMap(topic => topic.links)
   }
 
@@ -375,7 +382,7 @@ export class Flux {
       githubAccount === this.settings.values.githubAccount ? (github?.pullRequests ?? []) : []
     const me = github?.me
     const noReview = new Set(
-      CONFIG.workspaces.flatMap(workspace =>
+      allWorkspaces().flatMap(workspace =>
         (workspace.github.noReview ?? []).map(repo => (repo.split('/').at(-1) ?? repo).toLowerCase()),
       ),
     )
@@ -427,7 +434,7 @@ export class Flux {
 
     const workspace = this.workspace()
     const views = result.views.filter(view =>
-      topicVisible(view.topic, workspace, CONFIG.workspaces),
+      topicVisible(view.topic, workspace, allWorkspaces()),
     )
     const pick = (ball: TopicView['ball']) =>
       views
@@ -437,7 +444,7 @@ export class Flux {
     const state: AppState = {
       generatedAt: now.toISOString(),
       workspace: workspace?.id ?? null,
-      workspaces: CONFIG.workspaces.map(workspaceInfo),
+      workspaces: allWorkspaces().map(workspaceInfo),
       queue: pick('me'),
       active: views.filter(view => view.ball === 'agent'),
       waiting: pick('others'),
@@ -471,7 +478,7 @@ export class Flux {
   workspaceSnapshot(workspace: Workspace | null, now: Date) {
     const id = workspace?.id ?? null
     const result = reconcile(structuredClone(this.topics), this.items(now, id), this.sessions, now)
-    const views = result.views.filter(view => topicVisible(view.topic, workspace, CONFIG.workspaces))
+    const views = result.views.filter(view => topicVisible(view.topic, workspace, allWorkspaces()))
     const pick = (ball: TopicView['ball']) =>
       views
         .filter(view => view.topic.status === 'open' && view.ball === ball)

@@ -1,12 +1,18 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { safeStorage } from 'electron'
-import type { Settings, SettingsPatch } from '../../shared/types'
+import type { Settings, SettingsPatch, TrackedProject } from '../../shared/types'
 import type { CalendarName } from '../../shared/calendars'
 import { AVAILABLE_TRACKERS, type TrackerName } from '../../shared/trackers'
 import { CONFIG } from '../config'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
-import { resolveWorkspace } from '../workspaces'
+import {
+  allWorkspaces,
+  projectsFromWorkspaces,
+  resolveWorkspace,
+  setWorkspaces,
+  workspacesFromProjects,
+} from '../workspaces'
 
 type Secret = 'linearKey' | 'calendarUrl' | 'jiraToken' | 'granola'
 
@@ -25,6 +31,8 @@ interface Stored {
   trackers: TrackerName[] | null
   // null until chosen: Google when an iCal link is already saved, as before
   calendar: CalendarName | 'none' | null
+  // null until chosen in the app: the workspaces of config.json apply
+  projects: TrackedProject[] | null
 }
 
 const DEFAULTS: Stored = {
@@ -39,6 +47,7 @@ const DEFAULTS: Stored = {
   jiraSite: '',
   trackers: null,
   calendar: null,
+  projects: null,
 }
 
 function readJson<T>(path: string, fallback: T): T {
@@ -58,6 +67,16 @@ function writeJson(path: string, value: unknown, mode?: number): void {
 export class SettingsStore {
   private stored: Stored = { ...DEFAULTS, ...readJson<Partial<Stored>>(SETTINGS_FILE, {}) }
   private secrets = readJson<Partial<Record<Secret, string>>>(SECRETS_FILE, {})
+
+  constructor() {
+    this.publishWorkspaces()
+  }
+
+  // Projects chosen in the app replace the workspaces of config.json, for every part of Flux
+  private publishWorkspaces(): void {
+    const projects = this.stored.projects
+    setWorkspaces(projects && projects.length > 0 ? workspacesFromProjects(projects) : CONFIG.workspaces)
+  }
 
   get values(): Stored {
     return this.stored
@@ -102,7 +121,9 @@ export class SettingsStore {
       jiraSite: this.jiraSite(),
       trackers: this.trackers(),
       calendar: this.calendar(),
-      workspace: resolveWorkspace(CONFIG.workspaces, this.stored.workspace)?.id ?? null,
+      workspace: resolveWorkspace(allWorkspaces(), this.stored.workspace)?.id ?? null,
+      // Before you pick anything, the picker starts from the workspaces of config.json
+      projects: this.stored.projects ?? projectsFromWorkspaces(CONFIG.workspaces),
     }
   }
 
@@ -117,6 +138,7 @@ export class SettingsStore {
     const { linearKey, calendarUrl, jiraToken, ...plain } = patch
     this.stored = { ...this.stored, ...plain }
     writeJson(SETTINGS_FILE, this.stored)
+    if (plain.projects !== undefined) this.publishWorkspaces()
     const secrets: Array<[Secret, string | undefined]> = [
       ['linearKey', linearKey],
       ['calendarUrl', calendarUrl],

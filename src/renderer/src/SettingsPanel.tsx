@@ -7,6 +7,7 @@ import {
   Globe,
   Keyboard,
   KeyRound,
+  Layers,
   Mic,
   Settings2,
   X,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
+import { WorkspacesView } from './WorkspacesView'
 import { TimePicker } from './TimePicker'
 import { AddCalendarMenu, AddTrackerMenu, TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 import { calendarInfo } from '../../shared/calendars'
@@ -50,7 +52,7 @@ const ACCESS_LABEL: Record<NotificationAccess, string> = {
 
 type TextKey = Exclude<
   keyof SettingsPatch,
-  'onboarded' | 'githubAccount' | 'workspace' | 'trackers' | 'calendar'
+  'onboarded' | 'githubAccount' | 'workspace' | 'trackers' | 'calendar' | 'projects'
 >
 
 export function SettingsPanel({
@@ -58,12 +60,16 @@ export function SettingsPanel({
   onReplay,
   onSaved,
   onError,
+  initialView = 'main',
 }: {
   onClose(): void
   onReplay(): void
   onSaved(): void
   onError(message: string): void
+  // The selector's button opens the window straight on its Espaces page
+  initialView?: 'main' | 'workspaces'
 }) {
+  const [view, setView] = useState(initialView)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [patch, setPatch] = useState<SettingsPatch>({})
   const [saving, setSaving] = useState(false)
@@ -136,6 +142,22 @@ export function SettingsPanel({
         if (event.key === 'Escape') onClose()
       }}
     >
+      {view === 'workspaces' ? (
+        <WorkspacesView
+          onBack={
+            initialView === 'main'
+              ? () => {
+                  setView('main')
+                  // The summary line shows what the page just saved
+                  void window.flux.getSettings().then(setSettings)
+                }
+              : undefined
+          }
+          onClose={onClose}
+          onError={onError}
+        />
+      ) : (
+      <>
       <header>
         <h1>Réglages</h1>
         <button type="button" className="round glass small" aria-label="Fermer" onClick={onClose}>
@@ -229,6 +251,29 @@ export function SettingsPanel({
         ))}
         <AddTrackerMenu chosen={trackers} onAdd={name => setTrackers([...trackers, name])} />
       </section>
+
+      <div className="field">
+        <span>Espaces</span>
+        <div className="workspaces-summary">
+          <Layers size={15} aria-hidden="true" />
+          <span>
+            {(settings.projects ?? []).length > 0
+              ? (settings.projects ?? []).map(project => project.key).join(', ')
+              : trackers.length > 0
+                ? 'Aucun projet suivi'
+                : 'Connecte Jira ou Linear pour suivre des projets'}
+          </span>
+          <button
+            type="button"
+            className="pill glass small"
+            disabled={trackers.length === 0}
+            onClick={() => setView('workspaces')}
+          >
+            Gérer
+          </button>
+        </div>
+        <small>Chaque projet suivi devient un espace, avec sa file, ses PR et son daily.</small>
+      </div>
 
       <section className="field trackers">
         <span>Transcriptions</span>
@@ -377,6 +422,8 @@ export function SettingsPanel({
           Enregistrer
         </button>
       </footer>
+      </>
+      )}
     </form>
     </div>
   )

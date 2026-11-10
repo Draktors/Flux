@@ -14,9 +14,10 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { CALENDARS, calendarInfo, type CalendarName } from '../../shared/calendars'
 import { TRACKERS, type TrackerName } from '../../shared/trackers'
-import type { CheckResult, NotificationAccess, Rank, Settings } from '../../shared/types'
+import type { CheckResult, NotificationAccess, Rank, Settings, TrackedProject } from '../../shared/types'
 
 import { BrandIcon, type Brand } from './Brand'
+import { ProjectsPicker } from './Projects'
 import { rankStyle, tint, type RankStyle } from './rankStyle'
 import { TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 
@@ -27,6 +28,7 @@ type StepKey =
   | 'tools'
   | 'jira'
   | 'linear'
+  | 'projects'
   | 'calendar'
   | 'notifications'
   | 'done'
@@ -91,6 +93,14 @@ const ALL_STEPS: Record<StepKey, Omit<Step, 'eyebrow'> & { eyebrow?: string }> =
       saved: settings => settings.hasLinearKey,
     },
   },
+  projects: {
+    key: 'projects',
+    rank: 6,
+    icon: SquareKanban,
+    eyebrow: 'Tes projets',
+    title: 'Sur quoi travailles-tu ?',
+    text: 'Coche tes projets : chacun devient un espace, avec sa file, ses PR et son daily. Ajoute à chacun ses dépôts GitHub.',
+  },
   calendar: {
     key: 'calendar',
     rank: 3,
@@ -127,6 +137,7 @@ function buildSteps(trackers: TrackerName[]): Step[] {
     'github',
     'tools',
     ...(['jira', 'linear'] as const).filter(name => trackers.includes(name)),
+    ...(trackers.length > 0 ? (['projects'] as const) : []),
     'calendar',
     'notifications',
     'done',
@@ -212,6 +223,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const [status, setStatus] = useState<Status>({ state: 'idle' })
   const [github, setGithub] = useState<Status>({ state: 'idle' })
   const [access, setAccess] = useState<NotificationAccess | null>(null)
+  // null until you touch the picker, so an untouched step keeps config.json
+  const [projects, setProjects] = useState<TrackedProject[] | null>(null)
   const [asking, setAsking] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const steps = useMemo(() => buildSteps(trackers), [trackers])
@@ -304,6 +317,10 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     event.preventDefault()
     if (step.key === 'done') return void finish()
     if (step.key === 'notifications' && access === 'not-determined') return void askNotifications()
+    if (step.key === 'projects') {
+      if (projects !== null) void window.flux.saveSettings({ projects }).then(reload)
+      return next()
+    }
     if (step.key === 'tools') {
       void window.flux.saveSettings({ trackers }).then(reload)
       return next()
@@ -522,6 +539,14 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
             </label>
           )}
           {(secret || step.key === 'jira') && <StatusLine status={status} />}
+
+          {step.key === 'projects' && (
+            <ProjectsPicker
+              trackers={trackers}
+              value={projects ?? settings?.projects ?? []}
+              onChange={setProjects}
+            />
+          )}
 
           {step.key === 'notifications' && (
             <>

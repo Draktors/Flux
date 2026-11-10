@@ -149,6 +149,32 @@ export interface AppState {
   daily: DailyState
 }
 
+// A Jira project or Linear team you follow: each one becomes a workspace you switch to
+export interface TrackedProject {
+  tracker: TrackerName
+  // Project or team key, e.g. DEVPP or APP
+  key: string
+  name: string
+  // GitHub repos (owner/name) whose PRs belong to this project
+  repos: string[]
+  // Subset of repos where your PRs merge without a review
+  noReview: string[]
+}
+
+export interface ProjectOption {
+  tracker: TrackerName
+  key: string
+  name: string
+}
+
+export interface ProjectOptions {
+  projects: ProjectOption[]
+  // Repos you recently had PRs in, owner/name
+  repos: string[]
+  // One line per tool that could not be listed
+  errors: string[]
+}
+
 export interface Settings {
   dailyTime: string
   captureShortcut: string
@@ -168,6 +194,8 @@ export interface Settings {
   // gh login Flux reads GitHub as; null follows gh's active account
   githubAccount: string | null
   workspace: string | null
+  // null until chosen in the app: the workspaces of config.json apply
+  projects: TrackedProject[] | null
 }
 
 export interface SettingsPatch {
@@ -183,6 +211,7 @@ export interface SettingsPatch {
   workspace?: string
   onboarded?: boolean
   githubAccount?: string | null
+  projects?: TrackedProject[]
 }
 
 export interface GithubAccounts {
@@ -249,6 +278,7 @@ export interface FluxApi {
   githubAccounts(): Promise<GithubAccounts>
   checkLinearKey(key: string): Promise<CheckResult>
   checkJira(site: string, email: string, token: string): Promise<CheckResult>
+  listProjects(): Promise<ProjectOptions>
   checkCalendarUrl(url: string): Promise<CheckResult>
   runDaily(): Promise<void>
   readDaily(): Promise<string | null>

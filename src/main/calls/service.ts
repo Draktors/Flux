@@ -14,6 +14,7 @@ import { CALLS_FILE } from '../paths'
 import { Granola, type GranolaAuth, type GranolaNote } from '../sources/granola'
 import type { SettingsStore } from '../store/settings'
 import { classifyByRules, rotationWorkspace, settled } from './classify'
+import { allWorkspaces } from '../workspaces'
 
 const SYNC_MS = 10 * 60_000
 
@@ -51,7 +52,7 @@ export function viewOf(note: GranolaNote, stored: Stored, override: CallPatch | 
   // A field you set is never in doubt; the other one keeps Flux's doubt
   const doubtfulType = !override?.type && (stored.typeSource === 'rotation' || (stored.uncertain && stored.typeSource === 'claude'))
   const doubtfulWorkspace =
-    CONFIG.workspaces.length > 1 &&
+    allWorkspaces().length > 1 &&
     !override?.workspace &&
     (stored.workspaceSource === 'rotation' || (stored.uncertain && stored.workspaceSource === 'claude'))
   return {
@@ -188,9 +189,9 @@ export class Calls {
         workspace: rules.workspace.value,
         typeSource: rules.type.source,
         workspaceSource: rules.workspace.source,
-        uncertain: !settled(rules, CONFIG.workspaces),
+        uncertain: !settled(rules, allWorkspaces()),
       }
-      if (!settled(rules, CONFIG.workspaces)) unsure.push(note)
+      if (!settled(rules, allWorkspaces())) unsure.push(note)
     }
     if (unsure.length === 0) return
     try {

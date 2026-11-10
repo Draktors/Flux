@@ -21,6 +21,8 @@ export interface Workspace {
   short?: string;
   // Jira project keys whose tickets belong to this workspace
   jiraProjects: string[];
+  // Linear team keys whose tickets belong to this workspace
+  linearTeams?: string[];
   // Words that name the product in a call title or summary (Communicity, citopia…)
   keywords?: string[];
   github: {

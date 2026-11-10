@@ -2797,3 +2797,305 @@ button.chip:hover {
   color: var(--text-3);
   font-size: 12.5px;
 }
+
+/* Projets suivis : un espace par projet Jira ou équipe Linear */
+
+.projects {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.projects-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-list > li {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+.project-list > li.chosen {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22);
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-row strong {
+  flex: none;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projects .project-row small {
+  flex: none;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.project-check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+li.chosen .project-check {
+  background: var(--solid);
+  box-shadow: none;
+  color: var(--solid-ink);
+}
+
+.project-repos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 12px 39px;
+}
+
+.project-repos-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.repo-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px 0 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12.5px;
+}
+
+/* The repo name is what you read; its organisation gives way first */
+.repo-name {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.repo-owner {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  text-overflow: ellipsis;
+}
+
+.repo-owner-shared {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repo-short {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.repo-flag {
+  flex: none;
+  height: 22px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.repo-flag.on {
+  background: rgba(50, 215, 75, 0.16);
+  box-shadow: none;
+  color: var(--ok);
+}
+
+.ghost.visible {
+  opacity: 1;
+}
+
+.repo-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.projects .repo-add input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 10px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.onboarding .projects {
+  width: 100%;
+  max-height: 300px;
+  margin-top: 8px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+/* Ordre des espaces : les projets suivis se glissent pour changer l'ordre du sélecteur */
+
+.project-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.project-grip {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 30px;
+  margin-left: 6px;
+  margin-right: -8px;
+  border-radius: 6px;
+  color: var(--text-3);
+  cursor: grab;
+}
+
+.project-grip:hover,
+.project-grip:focus-visible {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.project-grip:active {
+  cursor: grabbing;
+}
+
+.project-list > li.dragging {
+  opacity: 0.45;
+}
+
+.project-list > li.drop-target {
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.22),
+    0 -2px 0 0 var(--new);
+}
+
+.project-list > li[data-first-other] {
+  margin-top: 10px;
+}
+
+/* Page Espaces de la fenêtre des réglages, ouverte aussi depuis le sélecteur */
+
+.workspace-switch .workspace-manage {
+  width: 26px;
+  padding: 0;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.workspace-switch .workspace-manage:hover {
+  color: var(--text);
+}
+
+.settings .settings-subheader {
+  gap: 10px;
+}
+
+.settings .settings-subheader h1 {
+  flex: 1;
+}
+
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.save-state.saved {
+  color: var(--ok);
+}
+
+.workspaces-summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 0 6px 0 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+
+.workspaces-summary > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

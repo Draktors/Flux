@@ -1,6 +1,7 @@
 import { CALL_TYPES, type CallType } from '../../shared/calls'
 import { CONFIG } from '../config'
 import { askClaude } from './claude'
+import { allWorkspaces } from '../workspaces'
 
 const MODEL = 'claude-haiku-5-5'
 const SUMMARY_LENGTH = 1_500
@@ -21,7 +22,7 @@ export interface CallVerdict {
 }
 
 function system(): string {
-  const workspaces = CONFIG.workspaces
+  const workspaces = allWorkspaces()
     .map(workspace => `- ${workspace.id} : ${workspace.label}${workspace.keywords?.length ? ` (${workspace.keywords.join(', ')})` : ''}`)
     .join('\n')
   const types = CALL_TYPES.map(type => `- ${type.id} : ${type.label}`).join('\n')
@@ -48,7 +49,7 @@ export function parseCallVerdicts(text: string): Record<string, CallVerdict> {
   const parsed = JSON.parse(text.slice(start, end + 1)) as unknown
   if (!Array.isArray(parsed)) return {}
   const types = new Set(CALL_TYPES.map(type => type.id))
-  const workspaces = new Set(CONFIG.workspaces.map(workspace => workspace.id))
+  const workspaces = new Set(allWorkspaces().map(workspace => workspace.id))
   const verdicts: Record<string, CallVerdict> = {}
   for (const entry of parsed as Array<Record<string, unknown>>) {
     if (typeof entry?.id !== 'string' || !types.has(entry.type as CallType)) continue

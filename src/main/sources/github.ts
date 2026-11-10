@@ -300,3 +300,25 @@ export async function fetchGithub(
     })),
   }
 }
+
+// Repos you had PRs in over the last months, most active first, for attaching them to a project
+export async function listRecentRepos(account: string | null, now = new Date()): Promise<string[]> {
+  const since = new Date(now.getTime() - 120 * 86_400_000).toISOString().slice(0, 10)
+  const data = await graphql<{
+    search: { nodes: Array<{ repository?: { nameWithOwner: string } }> }
+  }>(
+    account,
+    `query($q: String!) {
+      search(query: $q, type: ISSUE, first: 100) {
+        nodes { ... on PullRequest { repository { nameWithOwner } } }
+      }
+    }`,
+    { q: `is:pr involves:@me updated:>=${since} sort:updated-desc` },
+  )
+  const counts = new Map<string, number>()
+  for (const node of data.search.nodes) {
+    const name = node.repository?.nameWithOwner
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
+}

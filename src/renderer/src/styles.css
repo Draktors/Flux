@@ -139,7 +139,9 @@ input {
 .topbar {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* The sides take what their labels need and the tabs center in what is left, so nothing slides
+     under the tabs; when space runs out, the meeting title is what gives way */
+  grid-template-columns: auto minmax(max-content, 1fr) minmax(0, auto);
   align-items: center;
   gap: 16px;
   padding: 14px 20px 0;
@@ -169,6 +171,10 @@ input {
   border-radius: 9px;
 }
 
+.topbar > .tabs {
+  justify-self: center;
+}
+
 .tabs {
   display: flex;
   gap: 2px;
@@ -179,6 +185,8 @@ input {
 .tabs button {
   position: relative;
   display: inline-flex;
+  flex: none;
+  white-space: nowrap;
   align-items: center;
   gap: 6px;
   height: 34px;
@@ -228,17 +236,55 @@ input {
 
 .chip {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 6px;
-  min-width: 0;
   height: 32px;
   padding: 0 12px;
   border-radius: 999px;
   color: var(--text-2);
   font-size: 12.5px;
   white-space: nowrap;
+}
+
+.chip svg,
+.chip-when {
+  flex: none;
+}
+
+/* Only the text shrinks, with an ellipsis; the full label stays in the tooltip */
+.chip-text {
+  min-width: 0;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chip-when {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.chip.compact {
+  flex: none;
+}
+
+/* The meeting title gives way first, with an ellipsis; the time always shows */
+.chip.meeting {
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 1400px) {
+  .chip.meeting .chip-text {
+    display: none;
+  }
+}
+
+@media (max-width: 1340px) {
+  .chip.meeting {
+    display: none;
+  }
 }
 
 button.chip:hover {

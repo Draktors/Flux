@@ -17,11 +17,13 @@ import type {
   TopicView,
 } from '../../shared/types'
 import { RANKS } from '../../shared/ranks'
+import { CONFIG, type Workspace } from '../config'
 import { DAILY_COMMAND, DAILY_DIR, NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP_DIR } from '../paths'
 import { fetchAgents } from '../sources/agents'
 import { fetchGithub, fetchReviewed, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
+import { githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
 import { compareViews, reconcile, type LiveSession } from './ball'
 import {
   buildDaily,
@@ -50,8 +52,19 @@ import {
 } from './wrapup'
 
 const TICK_MS = 60_000
-const CALENDAR_EVERY_TICKS = 15
+// A meeting added a few minutes ahead still shows in time
+const CALENDAR_EVERY_TICKS = 5
 const REVIEWS_EVERY_TICKS = 30
+// The workspaces you are not looking at refresh every 5 minutes, so a switch shows warm data
+const BACKGROUND_EVERY_TICKS = 5
+
+// What GitHub and Jira last returned for one workspace
+interface WorkspaceCache {
+  github: GithubSnapshot | null
+  // Account the snapshot was read as, so an account switch never shows the other account's queue
+  githubAccount: string | null
+  jira: Ticket[]
+}
 
 export interface FluxHooks {
   onState(state: AppState): void
@@ -64,6 +77,8 @@ export interface FluxHooks {
   fetchCompleted(since: string): Promise<CompletedTicket[]>
   // The latest store reviews of the apps followed; null when none is
   fetchReviews(): Promise<StoreFeed | null>
+  // Jira tickets of the active workspace; null when Jira is not configured
+  fetchJira(keys: string[], projects: string[]): Promise<Ticket[] | null>
   fetchMeetings(): Promise<Meeting[] | null>
   closeThreads(topic: Topic): Promise<void>
   // Resolves the session id of threads opened in Claude Desktop; returns the topics it changed
@@ -74,9 +89,10 @@ export interface FluxHooks {
 function emptyHealth(): Record<SourceName, SourceHealth> {
   return {
     github: { ok: false, at: null },
-    linear: { ok: false, at: null, error: 'Clef API non renseignée' },
+    linear: { ok: false, at: null, error: 'Clef API non renseignée', missing: true },
+    jira: { ok: false, at: null, error: 'Jira non configuré', missing: true },
     agents: { ok: false, at: null },
-    calendar: { ok: false, at: null, error: 'Adresse iCal non renseignée' },
+    calendar: { ok: false, at: null, error: 'Adresse iCal non renseignée', missing: true },
   }
 }
 
@@ -121,8 +137,9 @@ function summarize(view: TopicView) {
 
 export class Flux {
   private topics: Topic[] = []
-  private github: GithubSnapshot | null = null
   private tickets: Ticket[] = []
+  // Keyed by workspace id ('' without workspaces), so switching never refetches before showing
+  private caches = new Map<string, WorkspaceCache>()
   private sessions: LiveSession[] = []
   private meetings: Meeting[] = []
   private health = emptyHealth()
@@ -140,6 +157,8 @@ export class Flux {
   private ticking = false
   private queued = false
   private tickCount = 0
+  // A manual refresh or a wake from sleep re-reads the calendar too
+  private calendarDue = false
   // No state before the first sync: an early rebuild would publish an empty flux and skip the loading scene
   private synced = false
 
@@ -214,7 +233,11 @@ export class Flux {
       return
     }
     const [reviewed, completed] = await Promise.all([
-      fetchReviewed(since).catch(() => null),
+      fetchReviewed(
+        since,
+        this.settings.values.githubAccount,
+        githubScope(this.workspace(), CONFIG.github.owner),
+      ).catch(() => null),
       this.hooks.fetchCompleted(since.toISOString()).catch(() => null),
     ])
     this.fallback = { reviewed: reviewed ?? [], completed: completed ?? [] }
@@ -288,6 +311,7 @@ export class Flux {
   }
 
   async refresh(): Promise<void> {
+    this.calendarDue = true
     await this.tick()
   }
 
@@ -298,7 +322,31 @@ export class Flux {
     await this.tick()
   }
 
+  private workspace() {
+    return resolveWorkspace(CONFIG.workspaces, this.settings.values.workspace)
+  }
+
+  private cache(id: string | null = this.workspace()?.id ?? null): WorkspaceCache {
+    const key = id ?? ''
+    let entry = this.caches.get(key)
+    if (!entry) {
+      entry = { github: null, githubAccount: null, jira: [] }
+      this.caches.set(key, entry)
+    }
+    return entry
+  }
+
+  // The view comes from the cache at once; the active workspace refreshes behind it
+  async switchWorkspace(): Promise<void> {
+    await this.rebuild()
+    void this.tick()
+  }
+
   async reloadSources(): Promise<void> {
+    const account = this.settings.values.githubAccount
+    for (const entry of this.caches.values()) {
+      if (entry.githubAccount !== account) entry.github = null
+    }
     this.tickCount = 0
     await this.tick()
   }
@@ -326,15 +374,19 @@ export class Flux {
       this.topics = await this.store.load()
       await this.adoptThreads()
       const now = new Date()
-      const refs = this.topics.filter(topic => topic.status !== 'done').flatMap(topic => topic.links)
+      const account = this.settings.values.githubAccount
+      const workspace = this.workspace()
+      const refs = this.refsFor(workspace)
+      const keys = refs.filter(ref => !ref.includes('#'))
+      const background =
+        this.tickCount % BACKGROUND_EVERY_TICKS === 0
+          ? CONFIG.workspaces.filter(entry => entry.id !== workspace?.id)
+          : CONFIG.workspaces.filter(
+              entry => entry.id !== workspace?.id && !this.cache(entry.id).github,
+            )
 
       await Promise.all([
-        fetchGithub(refs.filter(ref => ref.includes('#')), dayKey(previousWorkday(now)))
-          .then(snapshot => {
-            this.github = snapshot
-            this.track('github')
-          })
-          .catch(error => this.track('github', error)),
+        this.fetchWorkspace(workspace, account, now, true),
         fetchAgents()
           .then(sessions => {
             this.sessions = sessions
@@ -342,7 +394,7 @@ export class Flux {
           })
           .catch(error => this.track('agents', error)),
         this.hooks
-          .fetchTickets(refs.filter(ref => !ref.includes('#')))
+          .fetchTickets(keys)
           .then(tickets => {
             if (tickets === null) return
             this.tickets = tickets
@@ -350,6 +402,10 @@ export class Flux {
           })
           .catch(error => this.track('linear', error)),
       ])
+      // Warm the other workspaces after the visible one, without holding up its view
+      for (const other of background) {
+        void this.fetchWorkspace(other, account, now, false)
+      }
 
       if (this.tickCount % REVIEWS_EVERY_TICKS === 0) {
         await this.hooks
@@ -359,7 +415,8 @@ export class Flux {
           })
           .catch(() => undefined)
       }
-      if (this.tickCount % CALENDAR_EVERY_TICKS === 0) {
+      if (this.calendarDue || this.tickCount % CALENDAR_EVERY_TICKS === 0) {
+        this.calendarDue = false
         await this.hooks
           .fetchMeetings()
           .then(meetings => {
@@ -385,6 +442,54 @@ export class Flux {
     }
   }
 
+  private refsFor(workspace: Workspace | null): string[] {
+    return this.topics
+      .filter(topic => topic.status !== 'done' && topicVisible(topic, workspace, CONFIG.workspaces))
+      .flatMap(topic => topic.links)
+  }
+
+  // Health only follows the visible workspace; a background failure keeps the last good data
+  private async fetchWorkspace(
+    workspace: Workspace | null,
+    account: string | null,
+    now: Date,
+    visible: boolean,
+  ): Promise<void> {
+    const entry = this.cache(workspace?.id ?? null)
+    const refs = this.refsFor(workspace)
+    await Promise.all([
+      fetchGithub(
+        refs.filter(ref => ref.includes('#')),
+        dayKey(previousWorkday(now)),
+        account,
+        githubScope(workspace, CONFIG.github.owner),
+      )
+        .then(snapshot => {
+          entry.github = snapshot
+          entry.githubAccount = account
+          if (visible) this.track('github')
+        })
+        .catch(error => {
+          if (visible) this.track('github', error)
+        }),
+      this.hooks
+        .fetchJira(
+          refs.filter(ref => !ref.includes('#')),
+          workspace?.jiraProjects ?? [],
+        )
+        .then(tickets => {
+          if (tickets === null) return
+          entry.jira = tickets
+          if (visible) this.track('jira')
+        })
+        .catch(error => {
+          if (visible) this.track('jira', error)
+        }),
+    ])
+    // A background workspace that just became visible shows its fresh data now
+    if (!visible && workspace?.id === this.workspace()?.id) await this.rebuild()
+  }
+
   async adoptThreads(): Promise<void> {
     const changed = await this.hooks.adoptThreads(this.topics).catch(() => [])
     for (const topic of changed) await this.store.save(topic)
@@ -399,11 +504,16 @@ export class Flux {
   }
 
   private items(now: Date): Item[] {
-    const me = this.github?.me
+    const { github, githubAccount, jira } = this.cache()
+    // Data read as another GitHub account waits for the next fetch instead of showing
+    const pullRequests =
+      githubAccount === this.settings.values.githubAccount ? (github?.pullRequests ?? []) : []
+    const me = github?.me
     const context = { me: me ?? '', now }
     return [
-      ...(this.github?.pullRequests ?? []).map(pr => itemFromPullRequest(pr, context)),
+      ...pullRequests.map(pr => itemFromPullRequest(pr, context)),
       ...this.tickets.map(ticket => itemFromTicket(ticket, context)),
+      ...jira.map(ticket => itemFromTicket(ticket, context)),
     ]
   }
 
@@ -413,6 +523,14 @@ export class Flux {
       current: this.meetings.find(meeting => meeting.start <= iso && meeting.end > iso) ?? null,
       next: this.meetings.find(meeting => meeting.start > iso) ?? null,
     }
+  }
+
+  private visibleHealth(): AppState['sources'] {
+    const sources: AppState['sources'] = { ...this.health }
+    if (!this.settings.uses('linear')) delete sources.linear
+    if (!this.settings.uses('jira')) delete sources.jira
+    if (!this.settings.calendar()) delete sources.calendar
+    return sources
   }
 
   private async rebuild(notify = false): Promise<void> {
@@ -437,7 +555,10 @@ export class Flux {
       if (topic) await this.close(topic)
     }
 
-    const views = result.views
+    const workspace = this.workspace()
+    const views = result.views.filter(view =>
+      topicVisible(view.topic, workspace, CONFIG.workspaces),
+    )
     const pick = (ball: TopicView['ball']) =>
       views
         .filter(view => view.topic.status === 'open' && view.ball === ball)
@@ -462,19 +583,21 @@ export class Flux {
       topics: this.topics,
       views,
       queue,
-      merged: this.github?.merged ?? [],
+      merged: this.cache().github?.merged ?? [],
       times,
       now,
     })
     const state: AppState = {
       generatedAt: now.toISOString(),
+      workspace: workspace?.id ?? null,
+      workspaces: CONFIG.workspaces.map(workspaceInfo),
       queue,
       active,
       waiting: pick('others'),
       dormant: pick('dormant'),
       notes: views.filter(view => view.topic.status === 'inbox' && view.ball !== 'agent'),
       loose: result.loose.filter(item => item.ball === 'others'),
-      sources: this.health,
+      sources: this.visibleHealth(),
       meeting,
       daily: buildDaily({
         now,
@@ -484,7 +607,7 @@ export class Flux {
         views,
         queue,
         active,
-        merged: this.github?.merged ?? [],
+        merged: this.cache().github?.merged ?? [],
         fallback: this.fallback,
         reviews: this.reviews,
         run: this.daily,
@@ -532,7 +655,7 @@ export class Flux {
   }
 
   private async writeSnapshot(state: AppState): Promise<void> {
-    const merged: MergedPr[] = this.github?.merged ?? []
+    const merged: MergedPr[] = this.cache().github?.merged ?? []
     const snapshot = {
       generatedAt: state.generatedAt,
       sources: state.sources,
@@ -551,6 +674,7 @@ export class Flux {
       dormant: state.dormant.map(summarize),
       notes: state.notes.map(summarize),
       mergedSincePreviousWorkday: merged,
+      upcomingMeetings: this.meetings.filter(meeting => meeting.end > state.generatedAt).slice(0, 10),
     }
     const draft = `${SNAPSHOT_FILE}.${randomUUID()}.tmp`
     await writeFile(draft, JSON.stringify(snapshot, null, 2))

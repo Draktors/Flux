@@ -30,6 +30,11 @@ const api: FluxApi = {
     return () => ipcRenderer.removeListener('flux:open-wrapup-view', handler)
   },
   checkWrapup: (id, done) => ipcRenderer.invoke('flux:check-wrapup', id, done),
+  onRefreshShortcut(listener) {
+    const handler = () => listener()
+    ipcRenderer.on('flux:refresh-shortcut', handler)
+    return () => ipcRenderer.removeListener('flux:refresh-shortcut', handler)
+  },
   refresh: () => ipcRenderer.invoke('flux:refresh'),
   createNote: text => ipcRenderer.invoke('flux:create-note', text),
   openCapture: () => ipcRenderer.invoke('flux:open-capture'),
@@ -46,7 +51,9 @@ const api: FluxApi = {
   notificationAccess: () => ipcRenderer.invoke('flux:notification-access'),
   requestNotificationAccess: () => ipcRenderer.invoke('flux:request-notification-access'),
   checkGithub: () => ipcRenderer.invoke('flux:check-github'),
+  githubAccounts: () => ipcRenderer.invoke('flux:github-accounts'),
   checkLinearKey: key => ipcRenderer.invoke('flux:check-linear-key', key),
+  checkJira: (site, email, token) => ipcRenderer.invoke('flux:check-jira', site, email, token),
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),
   runDaily: () => ipcRenderer.invoke('flux:run-daily'),
   openDaily: () => ipcRenderer.invoke('flux:open-daily'),

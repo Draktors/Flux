@@ -228,7 +228,7 @@ export class Daily {
   }
 
   maybeRun(now: Date, state: AppState, dailyTime: string, workdayEnd: number): void {
-    if (this.running || this.attempted === localDate(now) || !state.sources.github.ok) return
+    if (this.running || this.attempted === localDate(now) || !state.sources.github?.ok) return
     if (!hasDailySkill()) return
     if (isDailyDue(now, dailyTime, workdayEnd, existsSync(this.path(now)))) void this.run(now, state)
   }

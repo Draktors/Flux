@@ -76,6 +76,8 @@ export interface Ticket {
   labels: string[]
   notices: LinearNotice[]
   asked?: AskedComment
+  // Jira: the status is one you are working in, whatever its name
+  inProgress?: boolean
 }
 
 export interface RankContext {
@@ -296,9 +298,9 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     if (QUESTION_STATES.has(ticket.stateName)) {
       const action = ticket.stateName === 'To frame' ? 'cadrage' : 'question'
       signals.push(signal(ref, 'state-question', 3, ticket.stateName, action, ticket.updatedAt))
-    } else if (ticket.stateName === 'Ready to deploy') {
+    } else if (/^ready to (deploy|mep)$/i.test(ticket.stateName)) {
       signals.push(signal(ref, 'state-ready', 4, 'Prêt à déployer', 'ship', ticket.updatedAt))
-    } else if (OWN_STATES.has(ticket.stateName)) {
+    } else if (OWN_STATES.has(ticket.stateName) || ticket.inProgress) {
       const action = ticket.labels.some(label => BUG_LABELS.test(label)) ? 'diagnostic' : 'ticket'
       signals.push(signal(ref, 'state-own', 6, ticket.stateName, action, ticket.updatedAt))
     }

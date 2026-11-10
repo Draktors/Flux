@@ -2,7 +2,9 @@ import type { MergedPr } from '../../shared/types'
 import { run } from '../exec'
 import { CONFIG } from '../config'
 import { BIN } from '../paths'
+import type { ReviewedPr } from '../engine/daily'
 import { prRef, type PullRequest, type ReviewThread } from '../engine/rank'
+import { dayKey } from '../engine/wrapup'
 
 export const GITHUB_HOST = CONFIG.github.host
 const HOST = GITHUB_HOST
@@ -212,4 +214,31 @@ export async function fetchGithub(extraRefs: string[], mergedSince: string): Pro
       mergedAt: node.mergedAt,
     })),
   }
+}
+
+// PRs of others I reviewed since a date, for a daily Flux kept no journal of
+export async function fetchReviewed(since: Date): Promise<ReviewedPr[]> {
+  const data = await graphql<{
+    reviewed: {
+      nodes: Array<{
+        number: number
+        title: string
+        url: string
+        repository: { name: string }
+        viewerLatestReview: { submittedAt: string | null } | null
+      }>
+    }
+  }>(
+    `query($reviewed: String!) {
+      reviewed: search(query: $reviewed, type: ISSUE, first: 30) {
+        nodes { ... on PullRequest { number title url repository { name } viewerLatestReview { submittedAt } } }
+      }
+    }`,
+    { reviewed: `is:pr reviewed-by:@me -author:@me${SCOPE} updated:>=${dayKey(since)}` },
+  )
+  return data.reviewed.nodes.flatMap(node => {
+    const at = node.viewerLatestReview?.submittedAt
+    if (!at || new Date(at) < since) return []
+    return [{ ref: prRef(node.repository.name, node.number), title: node.title, url: node.url, reviewedAt: at }]
+  })
 }

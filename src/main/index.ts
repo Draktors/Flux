@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   app,
@@ -14,13 +14,14 @@ import {
 } from 'electron'
 import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
 import { Flux } from './engine/poller'
-import { Daily } from './llm/daily'
+import { Daily, localDate } from './llm/daily'
+import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
 import { Triage } from './llm/triage'
 import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkLinearKey } from './onboarding'
-import { ARCHIVE_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
+import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar } from './sources/calendar'
-import { fetchLinear } from './sources/linear'
+import { fetchCompleted, fetchLinear } from './sources/linear'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
@@ -268,12 +269,19 @@ function registerIpc(): void {
   ipcMain.handle('flux:check-github', () => checkGithub())
   ipcMain.handle('flux:check-linear-key', (_event, key: string) => checkLinearKey(key))
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
-  ipcMain.handle('flux:run-daily', () => daily.run(new Date()))
-  ipcMain.handle('flux:read-daily', () => daily.read(new Date()))
+  ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))
   ipcMain.handle('flux:open-daily', () => {
-    const path = daily.notePath(new Date())
-    return path ? shell.openExternal(`obsidian://open?path=${encodeURIComponent(path)}`) : undefined
+    const path = join(DAILY_DIR, `${localDate(new Date())}.md`)
+    if (!existsSync(path)) return undefined
+    return shell.openExternal(`obsidian://open?path=${encodeURIComponent(path)}`)
   })
+  ipcMain.handle('flux:set-intentions', (_event, ids: string[]) => flux.setIntentions(ids))
+  ipcMain.handle('flux:use-daily-template', async () => {
+    const result = await useDailyTemplate()
+    if (result.ok) await flux.refresh()
+    return result
+  })
+  ipcMain.handle('flux:create-daily-skill', () => createDailySkill())
 }
 
 async function main(): Promise<void> {
@@ -309,6 +317,10 @@ async function main(): Promise<void> {
       const tickets = await fetchLinear(key, keys)
       await triage.apply(tickets)
       return tickets
+    },
+    fetchCompleted: async since => {
+      const key = settings.secret('linearKey')
+      return key ? fetchCompleted(key, since) : []
     },
     fetchMeetings: async () => {
       const url = settings.secret('calendarUrl')

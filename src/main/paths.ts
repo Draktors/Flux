@@ -28,4 +28,7 @@ export const SECRETS_FILE = join(STATE_DIR, 'secrets.json')
 export const TRIAGE_FILE = join(STATE_DIR, 'triage.json')
 // One wrap-up journal per day, named after its date
 export const WRAPUP_DIR = join(STATE_DIR, 'wrapup')
+// What the daily skill wrote, one file per day
+export const DAILY_STATE_DIR = join(STATE_DIR, 'daily')
+export const DAILY_SKILL_DIR = join(STATE_DIR, 'daily-skill')
 export const THREADS_DIR = join(STATE_DIR, 'threads')

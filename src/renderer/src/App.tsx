@@ -263,6 +263,18 @@ export function App() {
   const unreadWrapup = wrapupMark !== null && readSlot !== wrapupMark
   const index = list.findIndex(view => view.topic.id === currentId)
   const position = tab === 'queue' && index >= 0 ? `${index + 1} sur ${list.length}` : null
+  const openTopic = (id: string) => {
+    setSelected(id)
+    setTab(tabFor(state, id) ?? 'queue')
+  }
+  // A dated line at the end of the topic's note
+  const addNote = (id: string, text: string) => {
+    const topic = views.find(view => view.topic.id === id)?.topic
+    if (!topic) return
+    const stamp = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    const head = topic.body.trim() ? `${topic.body.trimEnd()}\n\n` : ''
+    void window.flux.updateTopic(id, { body: `${head}**${stamp}** — ${text}\n` })
+  }
 
   return (
     <>
@@ -353,15 +365,9 @@ export function App() {
         </header>
 
         {tab === 'daily' ? (
-          <DailyView daily={state.daily} />
+          <DailyView daily={state.daily} onOpen={openTopic} onNote={addNote} />
         ) : tab === 'wrapup' ? (
-          <WrapupView
-            wrapup={state.wrapup}
-            onOpen={id => {
-              setSelected(id)
-              setTab(tabFor(state, id) ?? 'queue')
-            }}
-          />
+          <WrapupView wrapup={state.wrapup} onOpen={openTopic} />
         ) : (
           <>
             <main className="focus">

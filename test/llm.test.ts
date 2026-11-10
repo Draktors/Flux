@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isMaxSession } from '../src/main/llm/claude'
-import { isDailyDue, localDate, noteFrom } from '../src/main/llm/daily'
+import { dailyFrom, isDailyDue, localDate, type DailyIds } from '../src/main/llm/daily'
 import { applyVerdicts, parseVerdicts } from '../src/main/llm/triage'
 import type { Ticket } from '../src/main/engine/rank'
 import { displayTitle } from '../src/renderer/src/format'
@@ -80,15 +80,48 @@ describe('déclenchement du daily', () => {
     expect(isDailyDue(at('2026-11-07T09:00:00'), '08:45', 19, false)).toBe(false)
   })
 
-  it('écarte le préambule de la réponse et exige le titre du jour', () => {
-    expect(noteFrom('Voici le digest.\n\n# Daily — 2026-11-06\ncorps\n\n', '2026-11-06')).toBe(
-      '# Daily — 2026-11-06\ncorps\n',
-    )
-    expect(() => noteFrom('Je n’ai pas pu.', '2026-11-06')).toThrow()
-  })
-
   it('date la note en heure locale', () => {
     expect(localDate(at('2026-11-06T00:30:00'))).toBe('2026-11-06')
+  })
+})
+
+describe('réponse du daily', () => {
+  const ids: DailyIds = {
+    lines: new Set(['hb#1', 'hb#2', 'web#3']),
+    candidates: new Set(['hb#1', 'hb#2']),
+    blockers: new Set(['web#3']),
+  }
+  const now = new Date(2026, 10, 10, 9, 30)
+  const answer = {
+    intentions: ['hb#2', 'inconnu', 'hb#2', 'hb#1'],
+    titles: { 'hb#1': '  Vue   débrief ', inconnu: 'ignoré' },
+    unblock: { 'web#3': 'Relancer Nicolas sur le design', 'hb#1': 'pas un bloquant' },
+    health: [
+      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x' },
+      { source: 'Datadog', level: 'ok', text: 'RAS', detail: 'jamais affiché', url: 'javascript:alert(1)' },
+      { source: 'Amplitude', level: 'superbe', text: 'niveau inventé' },
+    ],
+  }
+
+  it('lit le JSON même entouré de texte ou d’un bloc de code', () => {
+    const content = dailyFrom(`Voici :\n\`\`\`json\n${JSON.stringify(answer)}\n\`\`\`\n`, ids, now)
+    expect(content.generatedAt).toBe(now.toISOString())
+    expect(content.intentions).toEqual(['hb#2', 'hb#1'])
+    expect(content.titles).toEqual({ 'hb#1': 'Vue débrief' })
+    expect(content.unblock).toEqual({ 'web#3': 'Relancer Nicolas sur le design' })
+  })
+
+  it('garde le détail en alerte seulement et écarte les niveaux et liens inconnus', () => {
+    const { health } = dailyFrom(JSON.stringify(answer), ids, now)
+    expect(health).toEqual([
+      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x' },
+      { source: 'Datadog', level: 'ok', text: 'RAS', detail: null, url: null },
+    ])
+  })
+
+  it('échoue sans objet JSON', () => {
+    expect(() => dailyFrom('Je n’ai pas pu.', ids, now)).toThrow()
+    expect(() => dailyFrom('{ pas du json }', ids, now)).toThrow()
   })
 })
 

@@ -43,6 +43,11 @@ export interface WrapupJournal {
   ticked: Record<string, string>
   // Reminder slots already notified or dropped today
   fired: string[]
+  // Today's intentions in order, proposed by the daily or set by hand
+  intentions: string[]
+  intentionsEdited: boolean
+  // The daily run the intentions came from, so each run is applied once
+  intentionsFrom: string | null
 }
 
 export interface WrapupNotification {
@@ -72,7 +77,16 @@ export function normalizeTimes(times: unknown): string[] {
 }
 
 export function emptyJournal(date: string): WrapupJournal {
-  return { date, open: {}, handled: {}, ticked: {}, fired: [] }
+  return {
+    date,
+    open: {},
+    handled: {},
+    ticked: {},
+    fired: [],
+    intentions: [],
+    intentionsEdited: false,
+    intentionsFrom: null,
+  }
 }
 
 // Each day starts blank: an ask open yesterday and gone this morning was not done today
@@ -152,52 +166,69 @@ export interface WrapupInput {
   now: Date
 }
 
-function doneLines({ journal, topics, views, merged, now }: WrapupInput): WrapupDone[] {
-  const today = dayKey(now)
-  const isToday = (iso: string | undefined) => iso !== undefined && dayKey(new Date(iso)) === today
-  const mergedToday = new Map(
-    merged.filter(pr => isToday(pr.mergedAt)).map(pr => [pr.ref, pr] as const),
+// What was done over a window, read from the wrap-up journals, the topics and the merged PRs
+export interface DoneSource {
+  handled: HandledAsk[]
+  ticked: Record<string, string>
+  topics: Topic[]
+  views: TopicView[]
+  merged: MergedPr[]
+  within(iso: string): boolean
+}
+
+export interface DoneRecord extends WrapupDone {
+  // The highest ask handled on the topic, which names what was done
+  askRank: Rank | null
+  links: string[]
+}
+
+export function collectDone({ handled, ticked, topics, views, merged, within }: DoneSource): DoneRecord[] {
+  const inWindow = new Map(
+    merged.filter(pr => within(pr.mergedAt)).map(pr => [pr.ref, pr] as const),
   )
   const handledBy = new Map<string, HandledAsk[]>()
-  for (const ask of Object.values(journal.handled)) {
+  for (const ask of handled) {
+    if (!within(ask.at)) continue
     handledBy.set(ask.topicId, [...(handledBy.get(ask.topicId) ?? []), ask])
   }
 
-  const lines: WrapupDone[] = []
+  const records: DoneRecord[] = []
   const claimed = new Set<string>()
   for (const topic of topics) {
-    const merges = topic.links.flatMap(ref => mergedToday.get(ref) ?? [])
-    const closed = topic.status === 'done' && isToday(topic.closedAt)
+    const merges = topic.links.flatMap(ref => inWindow.get(ref) ?? [])
+    const closed = topic.status === 'done' && topic.closedAt !== undefined && within(topic.closedAt)
     const asks = (handledBy.get(topic.id) ?? []).sort((a, b) => a.rank - b.rank)
-    const ticked = journal.ticked[topic.id]
-    if (merges.length === 0 && !closed && asks.length === 0 && !ticked) continue
+    const tick = ticked[topic.id]
+    if (merges.length === 0 && !closed && asks.length === 0 && !tick) continue
     merges.forEach(pr => claimed.add(pr.ref))
 
     const outcome: WrapupOutcome =
-      merges.length > 0 ? 'merged' : closed ? 'closed' : ticked ? 'ticked' : 'handled'
+      merges.length > 0 ? 'merged' : closed ? 'closed' : tick ? 'ticked' : 'handled'
     const view = views.find(entry => entry.topic.id === topic.id)
-    lines.push({
+    records.push({
       id: topic.id,
       topicId: topic.id,
       live: topic.status !== 'done',
       ref: topic.links[0] ?? null,
       title: topic.title,
-      detail: asks.length > 0 ? asks.map(ask => ask.detail).join(' · ') : null,
+      detail: asks.length > 0 ? [...new Set(asks.map(ask => ask.detail))].join(' · ') : null,
       url: merges[0]?.url ?? view?.items[0]?.url ?? null,
       outcome,
       at: latest([
         ...merges.map(pr => pr.mergedAt),
         ...(closed && topic.closedAt ? [topic.closedAt] : []),
         ...asks.map(ask => ask.at),
-        ...(ticked ? [ticked] : []),
+        ...(tick ? [tick] : []),
       ]),
-      locked: merges.length > 0 || (!closed && !ticked),
+      locked: merges.length > 0 || (!closed && !tick),
+      askRank: asks[0]?.rank ?? null,
+      links: topic.links,
     })
   }
 
-  for (const pr of mergedToday.values()) {
+  for (const pr of inWindow.values()) {
     if (claimed.has(pr.ref)) continue
-    lines.push({
+    records.push({
       id: `merged:${pr.ref}`,
       topicId: null,
       live: false,
@@ -208,30 +239,57 @@ function doneLines({ journal, topics, views, merged, now }: WrapupInput): Wrapup
       outcome: 'merged',
       at: pr.mergedAt,
       locked: true,
+      askRank: null,
+      links: [pr.ref],
     })
   }
-  return lines.sort((a, b) => a.at.localeCompare(b.at))
+  return records.sort((a, b) => a.at.localeCompare(b.at))
 }
 
-// The head of the queue, minus what was ticked unless something new came in since
-function focusLines({ journal, queue }: WrapupInput): WrapupFocus[] {
-  return queue
-    .filter(view => {
-      const ticked = journal.ticked[view.topic.id]
-      return !ticked || view.signals.some(signal => signal.stamp > ticked)
-    })
-    .slice(0, FOCUS_SIZE)
-    .map(view => ({
-      id: view.topic.id,
-      topicId: view.topic.id,
-      live: true,
-      ref: view.topic.links[0] ?? null,
-      title: view.topic.title,
-      detail: view.signals[0]?.detail ?? null,
-      url: view.items[0]?.url ?? null,
-      rank: view.rank,
-      since: view.since,
-    }))
+function doneLines({ journal, topics, views, merged, now }: WrapupInput): WrapupDone[] {
+  const today = dayKey(now)
+  return collectDone({
+    handled: Object.values(journal.handled),
+    ticked: journal.ticked,
+    topics,
+    views,
+    merged,
+    within: iso => dayKey(new Date(iso)) === today,
+  }).map(({ askRank: _rank, links: _links, ...line }) => line)
+}
+
+// Ticked in the wrap-up, and nothing new came in since
+function settled(view: TopicView, journal: WrapupJournal): boolean {
+  const ticked = journal.ticked[view.topic.id]
+  return ticked !== undefined && !view.signals.some(signal => signal.stamp > ticked)
+}
+
+// An intention is done once the topic leaves my hands, or once ticked with nothing new since
+export function intentionDone(view: TopicView | undefined, journal: WrapupJournal): boolean {
+  if (!view) return true
+  return (view.ball !== 'me' && view.ball !== 'agent') || settled(view, journal)
+}
+
+// Today's intentions still to do, then the head of the queue
+function focusLines({ journal, views, queue }: WrapupInput): WrapupFocus[] {
+  const byId = new Map(views.map(view => [view.topic.id, view]))
+  const intentions = journal.intentions.flatMap(id => {
+    const view = byId.get(id)
+    return view && !intentionDone(view, journal) ? [view] : []
+  })
+  const picked = new Set(intentions.map(view => view.topic.id))
+  const rest = queue.filter(view => !picked.has(view.topic.id) && !settled(view, journal))
+  return [...intentions, ...rest].slice(0, FOCUS_SIZE).map(view => ({
+    id: view.topic.id,
+    topicId: view.topic.id,
+    live: true,
+    ref: view.topic.links[0] ?? null,
+    title: view.topic.title,
+    detail: view.signals[0]?.detail ?? null,
+    url: view.items[0]?.url ?? null,
+    rank: view.rank,
+    since: view.since,
+  }))
 }
 
 export function slotsAround(times: string[], now: Date): { slot: string | null; next: string | null } {

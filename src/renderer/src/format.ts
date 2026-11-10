@@ -28,6 +28,4 @@ export function displayTitle(title: string): string {
   return plain ? `${plain.charAt(0).toUpperCase()}${plain.slice(1)}` : title
 }
 
-export function markedBlocked(title: string): boolean {
-  return /\[(?:BLOCKED|DO NOT MERGE)\]/.test(title)
-}
+export { markedBlocked } from '../../shared/titles'

@@ -49,8 +49,10 @@ const api: FluxApi = {
   checkLinearKey: key => ipcRenderer.invoke('flux:check-linear-key', key),
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),
   runDaily: () => ipcRenderer.invoke('flux:run-daily'),
-  readDaily: () => ipcRenderer.invoke('flux:read-daily'),
   openDaily: () => ipcRenderer.invoke('flux:open-daily'),
+  setIntentions: ids => ipcRenderer.invoke('flux:set-intentions', ids),
+  useDailyTemplate: () => ipcRenderer.invoke('flux:use-daily-template'),
+  createDailySkill: () => ipcRenderer.invoke('flux:create-daily-skill'),
 }
 
 contextBridge.exposeInMainWorld('flux', api)

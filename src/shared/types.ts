@@ -93,6 +93,11 @@ export interface TopicView {
   actions: ProposedAction[]
 }
 
+export interface SourceProgress {
+  source: SourceName
+  ok: boolean
+}
+
 export interface SourceHealth {
   ok: boolean
   at: string | null
@@ -199,9 +204,20 @@ export interface CheckResult {
   detail: string
 }
 
+// The macOS permission for Flux notifications; unsupported when it cannot be read
+export type NotificationAccess =
+  | 'not-determined'
+  | 'denied'
+  | 'authorized'
+  | 'provisional'
+  | 'unsupported'
+
 export interface FluxApi {
   getState(): Promise<AppState>
   onState(listener: (state: AppState) => void): () => void
+  // Refetches every source now and resolves once the new state is out
+  refreshAll(): Promise<void>
+  onProgress(listener: (progress: SourceProgress) => void): () => void
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void
   onRefreshShortcut(listener: () => void): () => void
@@ -226,6 +242,9 @@ export interface FluxApi {
   getSettings(): Promise<Settings>
   saveSettings(patch: SettingsPatch): Promise<void>
   testNotification(): Promise<void>
+  openNotificationSettings(): Promise<void>
+  notificationAccess(): Promise<NotificationAccess>
+  requestNotificationAccess(): Promise<NotificationAccess>
   checkGithub(): Promise<CheckResult>
   githubAccounts(): Promise<GithubAccounts>
   checkLinearKey(key: string): Promise<CheckResult>

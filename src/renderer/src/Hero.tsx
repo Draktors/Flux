@@ -1,7 +1,8 @@
-import { ArrowUpRight, Check, Hand, ListChecks, LockOpen, Pencil } from 'lucide-react'
+import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, Pencil } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { RANKS } from '../../shared/ranks'
-import type { ProposedAction, TopicView } from '../../shared/types'
+import type { Item, ProposedAction, TopicView } from '../../shared/types'
+import { BrandIcon, LinkIcon } from './Brand'
 import { displayTitle, markedBlocked, waitingFor } from './format'
 import { rankStyle } from './rankStyle'
 import { useDraft } from './useDraft'
@@ -43,6 +44,9 @@ export function Hero({ view, position }: HeroProps) {
   }
 
   const [primary, ...others] = view.actions
+  // A prompt opens a Claude thread; otherwise the action opens its link
+  const destination = (action: ProposedAction, size: number) =>
+    action.prompt ? <BrandIcon brand="claude" size={size} /> : <LinkIcon url={action.url} size={size} />
 
   return (
     <section className="hero" key={topic.id}>
@@ -106,6 +110,7 @@ export function Hero({ view, position }: HeroProps) {
       <div className="hero-actions">
         {primary && (
           <button type="button" className="pill solid" onClick={() => launch(primary)}>
+            {destination(primary, 16)}
             {primary.label}
             <ArrowUpRight size={17} aria-hidden="true" />
           </button>
@@ -117,6 +122,7 @@ export function Hero({ view, position }: HeroProps) {
             key={action.kind}
             onClick={() => launch(action)}
           >
+            {destination(action, 15)}
             {action.label}
           </button>
         ))}
@@ -193,6 +199,43 @@ export function Hero({ view, position }: HeroProps) {
           {error}
         </p>
       )}
+    </section>
+  )
+}
+
+// A PR or ticket waiting on others that no topic holds yet: shown, and opened from here
+export function LooseHero({ item }: { item: Item }) {
+  const where = item.kind === 'pr' ? 'Ouvrir sur GitHub' : 'Ouvrir dans Linear'
+  return (
+    <section className="hero" key={item.ref}>
+      <p className="hero-rank">
+        <span className="tile">
+          <Hourglass size={15} strokeWidth={2.2} aria-hidden="true" />
+        </span>
+        En attente des autres
+      </p>
+
+      <div className="hero-title">
+        <h1>{displayTitle(item.title)}</h1>
+      </div>
+
+      <p className="hero-meta">
+        <span>{item.ref}</span>
+        <span>{item.kind === 'pr' ? 'Pull request' : 'Ticket'}</span>
+        {item.branch && <span>{item.branch}</span>}
+      </p>
+
+      <div className="hero-actions">
+        <button
+          type="button"
+          className="pill solid"
+          onClick={() => void window.flux.openExternal(item.url)}
+        >
+          <LinkIcon url={item.url} size={16} />
+          {where}
+          <ArrowUpRight size={17} aria-hidden="true" />
+        </button>
+      </div>
     </section>
   )
 }

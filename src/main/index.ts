@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   app,
@@ -18,6 +19,7 @@ import { Flux } from './engine/poller'
 import { Daily } from './llm/daily'
 import { CONFIG } from './config'
 import { Triage } from './llm/triage'
+import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
 import { ARCHIVE_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
@@ -171,9 +173,27 @@ function registerCapture(): void {
   if (accelerator) globalShortcut.register(accelerator, openCapture)
 }
 
+// macOS drops notifications silently when the person refused them for this bundle id
+function bundleId(): string | null {
+  if (!app.isPackaged) return null
+  const plist = readFileSync(join(process.resourcesPath, '..', 'Info.plist'), 'utf8')
+  return /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(plist)?.[1] ?? null
+}
+
+function openNotificationSettings(): Promise<void> {
+  const id = bundleId()
+  const pane = 'x-apple.systempreferences:com.apple.Notifications-Settings.extension'
+  return shell.openExternal(id ? `${pane}?id=${encodeURIComponent(id)}` : pane)
+}
+
 function notify(title: string, body: string, onClick: () => void): void {
+  console.log(`${new Date().toISOString()} notification : ${title} | ${body}`)
   const notification = new Notification({ title, body, silent: false })
   liveNotifications.add(notification)
+  notification.on('failed', (_event, error) => {
+    liveNotifications.delete(notification)
+    console.error(`Notification refusée par macOS : ${error}`)
+  })
   notification.on('click', () => {
     liveNotifications.delete(notification)
     onClick()
@@ -198,6 +218,9 @@ function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', async () => {
     await Promise.all([flux.refresh(), calls.sync()])
+  })
+  ipcMain.handle('flux:refresh-all', async () => {
+    await Promise.all([flux.refreshAll(), calls.sync()])
   })
   ipcMain.handle('flux:create-note', async (_event, text: string) => {
     if (text.trim()) await flux.addTopic(noteFromText(text, new Date()))
@@ -256,6 +279,9 @@ function registerIpc(): void {
   ipcMain.handle('flux:test-notification', () => {
     notify('Flux', 'Les notifications arrivent bien.', () => openMain())
   })
+  ipcMain.handle('flux:open-notification-settings', () => openNotificationSettings())
+  ipcMain.handle('flux:notification-access', () => notificationAccess())
+  ipcMain.handle('flux:request-notification-access', () => requestNotificationAccess())
   ipcMain.handle('flux:check-github', () => checkGithub(settings.values.githubAccount))
   ipcMain.handle('flux:github-accounts', async () => ({
     host: GITHUB_HOST,
@@ -306,6 +332,11 @@ async function main(): Promise<void> {
       tray?.setTitle(trayLabel(state))
       for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('flux:state', state)
+      }
+    },
+    onProgress(progress) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('flux:progress', progress)
       }
     },
     onNotify: ({ title, body, topicId }) => notify(title, body, () => showTopic(topicId)),

@@ -1,6 +1,7 @@
-import { ArrowUpRight, Check, GitPullRequest, PenLine, SquareKanban } from 'lucide-react'
+import { ArrowUpRight, Check, PenLine } from 'lucide-react'
 import { useState } from 'react'
 import type { ThreadStatus, TopicView } from '../../shared/types'
+import { BrandIcon, brandOf } from './Brand'
 import { displayTitle } from './format'
 import { Prose } from './Markdown'
 import { useDraft } from './useDraft'
@@ -43,7 +44,13 @@ export function Inspector({ view }: { view: TopicView }) {
                     {thread.closing ? ', à fermer' : ''}
                   </small>
                 </span>
-                <button type="button" className="pill glass small" onClick={() => goTo(thread.session)}>
+                <button
+                  type="button"
+                  className="pill glass small"
+                  title="Ouvrir dans Claude"
+                  onClick={() => goTo(thread.session)}
+                >
+                  <BrandIcon brand="claude" size={13} />
                   {thread.status === 'closed' ? 'Reprendre' : 'Y aller'}
                 </button>
               </li>
@@ -69,11 +76,10 @@ export function Inspector({ view }: { view: TopicView }) {
                   onClick={() => void window.flux.openExternal(item.url)}
                 >
                   <span className={`kind ${item.kind}`}>
-                    {item.kind === 'pr' ? (
-                      <GitPullRequest size={14} aria-hidden="true" />
-                    ) : (
-                      <SquareKanban size={14} aria-hidden="true" />
-                    )}
+                    <BrandIcon
+                      brand={brandOf(item.url) ?? (item.kind === 'pr' ? 'github' : 'linear')}
+                      size={14}
+                    />
                   </span>
                   <span className="row-text">
                     <strong>{item.ref}</strong>

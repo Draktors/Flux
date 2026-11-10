@@ -44,9 +44,13 @@ function describe(view: TopicView): string {
   return lead ? `${lead.detail}` : view.topic.title
 }
 
-function prune(seen: Record<string, string>, now: Date): Record<string, string> {
+// A signal still in the queue is always remembered, however old: dropping it would make it
+// look new on the next tick and notify it again, every minute
+function prune(seen: Record<string, string>, now: Date, current: Set<string>): Record<string, string> {
   const limit = new Date(now.getTime() - SEEN_RETENTION_MS).toISOString()
-  return Object.fromEntries(Object.entries(seen).filter(([, stamp]) => stamp >= limit))
+  return Object.fromEntries(
+    Object.entries(seen).filter(([id, stamp]) => current.has(id) || stamp >= limit),
+  )
 }
 
 export function decide(
@@ -76,7 +80,8 @@ export function decide(
   })
   const seen = { ...previous.seen }
   for (const { signal } of candidates) seen[signal.id] = signal.stamp
-  const next: NotifyState = { ...state, initialized: true, seen: prune(seen, now) }
+  const current = new Set(candidates.map(({ signal }) => signal.id))
+  const next: NotifyState = { ...state, initialized: true, seen: prune(seen, now, current) }
 
   if (!previous.initialized) {
     const lead = queue[0]

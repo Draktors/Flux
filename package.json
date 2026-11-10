@@ -6,11 +6,12 @@
   "description": "Poste de pilotage du flux tiré",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build:native": "mkdir -p native/build && clang++ -std=c++17 -ObjC++ -fobjc-arc -O2 -bundle -undefined dynamic_lookup -arch arm64 -arch x86_64 -mmacosx-version-min=12.0 -DNODE_GYP_MODULE_NAME=notifications -I node_modules/node-api-headers/include -framework Foundation -framework UserNotifications native/notifications.mm -o native/build/notifications.node",
+    "dev": "pnpm build:native && electron-vite dev",
+    "build": "pnpm build:native && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "package": "electron-vite build && electron-builder --mac --dir",
+    "package": "pnpm build && electron-builder --mac --dir",
     "install-app": "pnpm package && rm -rf /Applications/Flux.app && cp -R dist/mac-arm64/Flux.app /Applications/ && codesign --force --deep --sign - /Applications/Flux.app"
   },
   "build": {
@@ -18,6 +19,12 @@
     "productName": "Flux",
     "files": [
       "out/**"
+    ],
+    "extraResources": [
+      {
+        "from": "native/build/notifications.node",
+        "to": "notifications.node"
+      }
     ],
     "directories": {
       "output": "dist"
@@ -46,6 +53,7 @@
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "simple-icons": "16.36.0",
     "yaml": "^2.9.1"
   },
   "devDependencies": {
@@ -56,6 +64,7 @@
     "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
     "electron-vite": "^6.0.0",
+    "node-api-headers": "1.9.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

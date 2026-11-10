@@ -1,10 +1,11 @@
 import {
   ArrowRight,
+  BellRing,
   CalendarDays,
   Check,
   CircleAlert,
-  GitPullRequest,
   LoaderCircle,
+  Settings2,
   SquareKanban,
   Waves,
   type LucideIcon,
@@ -13,18 +14,28 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { CALENDARS, calendarInfo, type CalendarName } from '../../shared/calendars'
 import { TRACKERS, type TrackerName } from '../../shared/trackers'
-import type { CheckResult, Rank, Settings } from '../../shared/types'
+import type { CheckResult, NotificationAccess, Rank, Settings } from '../../shared/types'
 
+import { BrandIcon, type Brand } from './Brand'
 import { rankStyle, tint, type RankStyle } from './rankStyle'
 import { TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 
 type SecretKey = 'linearKey' | 'calendarUrl'
-type StepKey = 'welcome' | 'github' | 'tools' | 'jira' | 'linear' | 'calendar' | 'done'
+type StepKey =
+  | 'welcome'
+  | 'github'
+  | 'tools'
+  | 'jira'
+  | 'linear'
+  | 'calendar'
+  | 'notifications'
+  | 'done'
 
 interface Step {
   key: StepKey
   rank: Rank
-  icon: LucideIcon
+  // A brand logo for the services Flux connects to, a lucide glyph otherwise
+  icon: LucideIcon | Brand
   eyebrow: string
   title: string
   text: string
@@ -47,7 +58,7 @@ const ALL_STEPS: Record<StepKey, Omit<Step, 'eyebrow'> & { eyebrow?: string }> =
   github: {
     key: 'github',
     rank: 2,
-    icon: GitPullRequest,
+    icon: 'github',
     title: 'GitHub',
     text: 'Flux lit tes PR avec la CLI gh déjà connectée sur ce Mac : aucune clef à saisir ici.',
   },
@@ -92,6 +103,14 @@ const ALL_STEPS: Record<StepKey, Omit<Step, 'eyebrow'> & { eyebrow?: string }> =
       saved: settings => settings.hasCalendarUrl,
     },
   },
+  notifications: {
+    key: 'notifications',
+    rank: 1,
+    icon: BellRing,
+    eyebrow: 'Dernier réglage',
+    title: 'Notifications',
+    text: 'Flux te prévient quand un sujet passe devant ou que ton daily est prêt. macOS te demande ton accord une seule fois.',
+  },
   done: {
     key: 'done',
     rank: 4,
@@ -109,6 +128,7 @@ function buildSteps(trackers: TrackerName[]): Step[] {
     'tools',
     ...(['jira', 'linear'] as const).filter(name => trackers.includes(name)),
     'calendar',
+    'notifications',
     'done',
   ]
   const connections = keys.filter(key => CONNECTIONS.includes(key))
@@ -122,6 +142,32 @@ function buildSteps(trackers: TrackerName[]): Step[] {
 }
 
 type Status = { state: 'idle' } | { state: 'checking' } | ({ state: 'done' } & CheckResult)
+
+const allowed = (access: NotificationAccess | null) =>
+  access === 'authorized' || access === 'provisional'
+
+function accessStatus(access: NotificationAccess | null, asking: boolean): Status {
+  if (asking)
+    return { state: 'done', ok: true, detail: 'Réponds à la demande de macOS en haut à droite.' }
+  if (access === null) return { state: 'checking' }
+  if (allowed(access)) return { state: 'done', ok: true, detail: 'Notifications autorisées' }
+  if (access === 'denied') {
+    return {
+      state: 'done',
+      ok: false,
+      detail:
+        'macOS bloque les notifications de Flux. Active-les dans les réglages, Flux revérifie à ton retour.',
+    }
+  }
+  if (access === 'unsupported') {
+    return {
+      state: 'done',
+      ok: false,
+      detail: 'Flux ne peut pas lire l’autorisation : envoie un essai.',
+    }
+  }
+  return { state: 'idle' }
+}
 
 const CHECKS: Record<SecretKey, (value: string) => Promise<CheckResult>> = {
   linearKey: value => window.flux.checkLinearKey(value),
@@ -165,6 +211,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const [jira, setJira] = useState<JiraDraft>({ site: '', email: '', token: '' })
   const [status, setStatus] = useState<Status>({ state: 'idle' })
   const [github, setGithub] = useState<Status>({ state: 'idle' })
+  const [access, setAccess] = useState<NotificationAccess | null>(null)
+  const [asking, setAsking] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const steps = useMemo(() => buildSteps(trackers), [trackers])
   const step = steps[Math.min(index, steps.length - 1)]
@@ -186,6 +234,23 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     if (step.key === 'github' && github.state === 'idle') void verifyGithub()
     input.current?.focus()
   }, [index])
+
+  // Back from System Settings, the window regains focus: read the permission again
+  useEffect(() => {
+    if (step.key !== 'notifications') return
+    const refresh = () => void window.flux.notificationAccess().then(setAccess)
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [step.key])
+
+  const askNotifications = async () => {
+    setAsking(true)
+    const answer = await window.flux.requestNotificationAccess()
+    setAsking(false)
+    setAccess(answer)
+    if (allowed(answer)) void window.flux.testNotification()
+  }
 
   const verifyGithub = async () => {
     setGithub({ state: 'checking' })
@@ -238,6 +303,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (step.key === 'done') return void finish()
+    if (step.key === 'notifications' && access === 'not-determined') return void askNotifications()
     if (step.key === 'tools') {
       void window.flux.saveSettings({ trackers }).then(reload)
       return next()
@@ -272,10 +338,15 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     if (step.key === 'done') return 'Ouvrir Flux'
     if (step.key === 'tools' && trackers.length === 0) return 'Aucun pour l’instant'
     if (step.key === 'calendar' && !calendar) return 'Pas d’agenda'
+    if (step.key === 'notifications' && access === 'not-determined')
+      return 'Autoriser les notifications'
     if (pending && !verified) return 'Vérifier et enregistrer'
     return 'Continuer'
   })()
-  const canLater = (secret && !saved && !verified) || (step.key === 'jira' && !jiraSaved && !verified)
+  const canLater =
+    (secret && !saved && !verified) ||
+    (step.key === 'jira' && !jiraSaved && !verified) ||
+    (step.key === 'notifications' && access === 'not-determined')
   const summary = settings
     ? [
         { label: 'GitHub', ok: github.state === 'done' && github.ok },
@@ -284,6 +355,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
           ok: name === 'jira' ? jiraSaved : settings.hasLinearKey,
         })),
         ...(calendar ? [{ label: calendarInfo(calendar).label, ok: settings.hasCalendarUrl }] : []),
+        { label: 'Notifications', ok: allowed(access) },
       ]
     : []
 
@@ -312,6 +384,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
           <span className="onboarding-icon">
             {step.key === 'jira' || step.key === 'linear' ? (
               <TrackerBadge name={step.key} size={30} />
+            ) : typeof Icon === 'string' ? (
+              <BrandIcon brand={Icon} size={26} />
             ) : (
               <Icon size={26} strokeWidth={2.2} aria-hidden="true" />
             )}
@@ -449,6 +523,34 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
           )}
           {(secret || step.key === 'jira') && <StatusLine status={status} />}
 
+          {step.key === 'notifications' && (
+            <>
+              <StatusLine status={accessStatus(access, asking)} />
+              <div className="onboarding-buttons">
+                {(allowed(access) || access === 'unsupported') && (
+                  <button
+                    type="button"
+                    className="pill glass small"
+                    onClick={() => void window.flux.testNotification()}
+                  >
+                    <BellRing size={15} aria-hidden="true" />
+                    Envoyer un essai
+                  </button>
+                )}
+                {(access === 'denied' || access === 'unsupported') && (
+                  <button
+                    type="button"
+                    className="pill glass small"
+                    onClick={() => void window.flux.openNotificationSettings()}
+                  >
+                    <Settings2 size={15} aria-hidden="true" />
+                    Ouvrir les réglages
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+
           {step.key === 'done' && (
             <ul className="onboarding-summary">
               {summary.map(entry => (
@@ -477,7 +579,11 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
               Plus tard
             </button>
           )}
-          <button type="submit" className="pill solid" disabled={status.state === 'checking'}>
+          <button
+            type="submit"
+            className="pill solid"
+            disabled={status.state === 'checking' || asking}
+          >
             {primary}
             <ArrowRight size={16} aria-hidden="true" />
           </button>

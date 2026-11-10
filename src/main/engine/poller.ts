@@ -9,6 +9,7 @@ import type {
   Meeting,
   SourceHealth,
   SourceName,
+  SourceProgress,
   Topic,
   TopicView,
 } from '../../shared/types'
@@ -41,6 +42,8 @@ interface WorkspaceCache {
 
 export interface FluxHooks {
   onState(state: AppState): void
+  // Each source as soon as it answers, so the first load can show its progress
+  onProgress?(progress: SourceProgress): void
   onNotify(notification: FluxNotification): void
   fetchTickets(keys: string[]): Promise<Ticket[] | null>
   // Jira tickets of the active workspace; null when Jira is not configured
@@ -103,6 +106,8 @@ export class Flux {
   private tickCount = 0
   // A manual refresh or a wake from sleep re-reads the calendar too
   private calendarDue = false
+  // No state before the first sync: an early rebuild would publish an empty flux and skip the loading scene
+  private synced = false
 
   constructor(
     private readonly store: TopicStore,
@@ -203,6 +208,13 @@ export class Flux {
     void this.tick()
   }
 
+  // Manual refresh: lets a tick in flight finish, then refetches every source, calendar included
+  async refreshAll(): Promise<void> {
+    while (this.ticking) await new Promise(resolve => setTimeout(resolve, 200))
+    this.tickCount = 0
+    await this.tick()
+  }
+
   async reloadSources(): Promise<void> {
     const account = this.settings.values.githubAccount
     for (const entry of this.caches.values()) {
@@ -222,6 +234,7 @@ export class Flux {
     this.health[source] = error
       ? { ok: false, at: this.health[source].at, error: (error as Error).message }
       : { ok: true, at }
+    this.hooks.onProgress?.({ source, ok: !error })
   }
 
   private async tick(): Promise<void> {
@@ -279,6 +292,7 @@ export class Flux {
           .catch(error => this.track('calendar', error))
       }
       this.tickCount += 1
+      this.synced = true
 
       await this.rebuild(true)
       await this.sweepClosingThreads()
@@ -390,6 +404,7 @@ export class Flux {
   }
 
   private async rebuild(notify = false): Promise<void> {
+    if (!this.synced) return
     const now = new Date()
     const result = reconcile(this.topics, this.items(now), this.sessions, now)
 

@@ -1,4 +1,17 @@
-import { AtSign, CalendarDays, Check, Globe, Keyboard, KeyRound, Mic, X, type LucideIcon } from 'lucide-react'
+import {
+  AtSign,
+  BellRing,
+  CalendarDays,
+  Check,
+  CircleAlert,
+  Globe,
+  Keyboard,
+  KeyRound,
+  Mic,
+  Settings2,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
 import { TimePicker } from './TimePicker'
@@ -7,7 +20,7 @@ import { calendarInfo } from '../../shared/calendars'
 import type { GranolaStatus } from '../../shared/calls'
 import type { TrackerName } from '../../shared/trackers'
 import { useEffect, useState, type FormEvent } from 'react'
-import type { GithubAccounts, Settings, SettingsPatch } from '../../shared/types'
+import type { GithubAccounts, NotificationAccess, Settings, SettingsPatch } from '../../shared/types'
 
 function InputShell({ icon: Icon, stored, children }: { icon: LucideIcon; stored?: boolean; children: ReactNode }) {
   return (
@@ -26,6 +39,14 @@ function InputShell({ icon: Icon, stored, children }: { icon: LucideIcon; stored
 
 // Kept across openings so profile pictures show at once when the panel comes back
 let lastAccounts: GithubAccounts | null = null
+
+const ACCESS_LABEL: Record<NotificationAccess, string> = {
+  authorized: 'Autorisées par macOS',
+  provisional: 'Autorisées par macOS, en mode discret',
+  denied: 'Bloquées par macOS : active Flux dans les réglages',
+  'not-determined': 'Pas encore autorisées',
+  unsupported: 'Autorisation illisible, envoie un essai pour vérifier',
+}
 
 type TextKey = Exclude<
   keyof SettingsPatch,
@@ -48,6 +69,15 @@ export function SettingsPanel({
   const [saving, setSaving] = useState(false)
   const [accounts, setAccounts] = useState<GithubAccounts | null>(lastAccounts)
   const [granola, setGranola] = useState<GranolaStatus | null>(null)
+  const [access, setAccess] = useState<NotificationAccess | null>(null)
+
+  useEffect(() => {
+    // Back from System Settings, the window regains focus: read the permission again
+    const refresh = () => void window.flux.notificationAccess().then(setAccess)
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
 
   useEffect(() => {
     void window.flux.getCalls().then(state => setGranola(state.granola))
@@ -298,15 +328,49 @@ export function SettingsPanel({
         </label>
       </div>
 
+      <section className="settings-notifications">
+        <span className="label-title">
+          <BellRing size={13} aria-hidden="true" />
+          Notifications
+        </span>
+        <p className={`access ${access === 'authorized' || access === 'provisional' ? 'ok' : 'warn'}`}>
+          {access === 'authorized' || access === 'provisional' ? (
+            <Check size={14} aria-hidden="true" />
+          ) : (
+            <CircleAlert size={14} aria-hidden="true" />
+          )}
+          {ACCESS_LABEL[access ?? 'unsupported']}
+        </p>
+        <div className="settings-row">
+          {access === 'not-determined' && (
+            <button
+              type="button"
+              className="pill glass small"
+              onClick={() => void window.flux.requestNotificationAccess().then(setAccess)}
+            >
+              Autoriser
+            </button>
+          )}
+          <button
+            type="button"
+            className="pill glass small"
+            onClick={() => void window.flux.testNotification()}
+          >
+            Envoyer un essai
+          </button>
+          <button
+            type="button"
+            className="pill glass small"
+            onClick={() => void window.flux.openNotificationSettings()}
+          >
+            <Settings2 size={14} aria-hidden="true" />
+            Réglages macOS
+          </button>
+        </div>
+      </section>
+
       <footer>
-        <button
-          type="button"
-          className="pill glass small notify-test"
-          onClick={() => void window.flux.testNotification()}
-        >
-          Tester une notification
-        </button>
-        <button type="button" className="pill glass small" onClick={onReplay}>
+        <button type="button" className="pill glass small notify-test" onClick={onReplay}>
           Revoir l’accueil
         </button>
         <button type="submit" className="pill solid small" disabled={saving}>

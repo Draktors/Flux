@@ -4,11 +4,11 @@ import { SCENES, Spot } from './Spot'
 
 // Newest first, one line each: the id of the first entry marks what was read
 const ENTRIES: Array<{ id: string; date: string; text: string; scene?: string }> = [
-  { id: '2026-11-10-daily', date: '10 nov.', text: 'Daily refait, en blocs courts', scene: 'yesterday' },
-  { id: '2026-11-10-intentions', date: '10 nov.', text: 'Intentions du jour réordonnables', scene: 'today' },
-  { id: '2026-11-10-health', date: '10 nov.', text: 'Santé prod d’un regard', scene: 'health' },
+  { id: '2026-11-10-daily', date: '10 nov.', text: 'Daily refait, en blocs courts', scene: 'daily' },
+  { id: '2026-11-10-intentions', date: '10 nov.', text: 'Intentions du jour réordonnables', scene: 'daily' },
+  { id: '2026-11-10-health', date: '10 nov.', text: 'Santé prod d’un regard', scene: 'daily' },
   { id: '2026-11-10-wrapup', date: '10 nov.', text: 'Wrap-up à la place de Dormant', scene: 'wrapup' },
-  { id: '2026-11-10-reviewed', date: '10 nov.', text: 'PR reviewées rangées en Attente', scene: 'waiting' },
+  { id: '2026-11-10-reviewed', date: '10 nov.', text: 'PR reviewées rangées en Attente', scene: 'reviews' },
   { id: '2026-11-10-refresh', date: '10 nov.', text: 'Bouton Tout actualiser' },
   { id: '2026-11-09-flux', date: '9 nov.', text: 'Première version' },
 ]

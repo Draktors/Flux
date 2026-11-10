@@ -95,6 +95,20 @@ describe('file sur les données réelles du 06/11', () => {
 })
 
 describe('règles unitaires', () => {
+  it('rend à moi une PR sans review nécessaire, prête à merger', () => {
+    const mine = pr({ author: ME, repo: 'cc-mobile', reviewDecision: null, ci: 'SUCCESS', mergeStateStatus: 'BLOCKED' })
+    const item = itemFromPullRequest(mine, { ...context, noReview: new Set(['cc-mobile']) })
+    expect(item.ball).toBe('me')
+    expect(item.signals[0]).toMatchObject({ rank: 4, action: 'ship' })
+    expect(itemFromPullRequest(mine, context).ball).toBe('others')
+  })
+
+  it('garde un brouillon en brouillon, même sans review', () => {
+    const draft = pr({ author: ME, repo: 'cc-mobile', isDraft: true })
+    const item = itemFromPullRequest(draft, { ...context, noReview: new Set(['cc-mobile']) })
+    expect(item.signals[0]).toMatchObject({ rank: 6, detail: 'Brouillon' })
+  })
+
   it("n'alerte pas sur une review en cours de rédaction", () => {
     const item = itemFromPullRequest(
       pr({
@@ -200,6 +214,16 @@ describe('tickets', () => {
     expect(rank('Ready to deploy')).toBe(4)
     expect(rank('Personal Review')).toBe(6)
     expect(rank('Backlog')).toBeUndefined()
+  })
+
+  it('garde dans ma file un ticket « À faire » qui m’est assigné, après ceux en cours', () => {
+    const todo = itemFromTicket(ticket({ stateName: 'À faire', stateType: 'unstarted' }), context)
+    expect(todo.ball).toBe('me')
+    expect(todo.signals[0]).toMatchObject({ rank: 6, weight: 1, detail: 'À faire' })
+    const started = itemFromTicket(ticket({ stateName: 'In Progress', stateType: 'started' }), context)
+    expect(started.signals[0].weight).toBeLessThan(todo.signals[0].weight)
+    const theirs = itemFromTicket(ticket({ stateName: 'À faire', stateType: 'unstarted', assignedToMe: false }), context)
+    expect(theirs.ball).not.toBe('me')
   })
 
   it('propose le diagnostic sur un ticket de bug', () => {

@@ -360,7 +360,12 @@ export class Flux {
     const pullRequests =
       githubAccount === this.settings.values.githubAccount ? (github?.pullRequests ?? []) : []
     const me = github?.me
-    const context = { me: me ?? '', now }
+    const noReview = new Set(
+      CONFIG.workspaces.flatMap(workspace =>
+        (workspace.github.noReview ?? []).map(repo => (repo.split('/').at(-1) ?? repo).toLowerCase()),
+      ),
+    )
+    const context = { me: me ?? '', now, noReview }
     return [
       ...pullRequests.map(pr => itemFromPullRequest(pr, context)),
       ...this.tickets.map(ticket => itemFromTicket(ticket, context)),

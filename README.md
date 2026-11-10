@@ -52,6 +52,7 @@ Tout ce qui dépend de toi ou de ton entreprise vit dans `~/.flux/config.json`, 
 }
 ```
 
+- `workspaces[].github.noReview` liste les dépôts où tes PR s'intègrent sans review (ex. `["cc-mobile"]`) : une PR ouverte y passe en « Prêt à livrer » au lieu d'attendre une relecture.
 - `github.owner` limite la file aux dépôts d'une organisation ; vide, Flux prend toutes les PR qui t'impliquent.
 - `github.bots` liste les logins dont les commentaires ne comptent pas comme un humain qui t'attend.
 - `linear.teams` liste les clefs d'équipe reconnues dans les titres et les branches ; vide, toute clef `ABC-123` en majuscules compte.

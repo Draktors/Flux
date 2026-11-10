@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { rename, writeFile } from 'node:fs/promises'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type {
   AppState,
   DailyState,
@@ -14,7 +15,7 @@ import type {
   TopicView,
 } from '../../shared/types'
 import { RANKS } from '../../shared/ranks'
-import { NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR } from '../paths'
+import { NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP_DIR } from '../paths'
 import { fetchAgents } from '../sources/agents'
 import { fetchGithub, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
@@ -22,6 +23,20 @@ import type { TopicStore } from '../store/topics'
 import { compareViews, reconcile, type LiveSession } from './ball'
 import { decide, EMPTY_NOTIFY_STATE, type FluxNotification, type NotifyState } from './notify'
 import { itemFromPullRequest, itemFromTicket, type Ticket } from './rank'
+import {
+  buildWrapup,
+  dayKey,
+  dueSlot,
+  emptyJournal,
+  forDay,
+  isFreeTask,
+  observe,
+  tick,
+  untick,
+  wrapupNotification,
+  type WrapupJournal,
+  type WrapupNotification,
+} from './wrapup'
 
 const TICK_MS = 60_000
 const CALENDAR_EVERY_TICKS = 15
@@ -31,6 +46,7 @@ export interface FluxHooks {
   // Each source as soon as it answers, so the first load can show its progress
   onProgress?(progress: SourceProgress): void
   onNotify(notification: FluxNotification): void
+  onWrapup(notification: WrapupNotification): void
   fetchTickets(keys: string[]): Promise<Ticket[] | null>
   fetchMeetings(): Promise<Meeting[] | null>
   closeThreads(topic: Topic): Promise<void>
@@ -58,6 +74,21 @@ function emptyHealth(): Record<SourceName, SourceHealth> {
   }
 }
 
+function journalFile(date: string): string {
+  return join(WRAPUP_DIR, `${date}.json`)
+}
+
+function readJournal(now: Date): WrapupJournal {
+  const date = dayKey(now)
+  const path = journalFile(date)
+  if (!existsSync(path)) return emptyJournal(date)
+  try {
+    return { ...emptyJournal(date), ...(JSON.parse(readFileSync(path, 'utf8')) as Partial<WrapupJournal>), date }
+  } catch {
+    return emptyJournal(date)
+  }
+}
+
 function summarize(view: TopicView) {
   const lead = view.signals[0]
   return {
@@ -81,6 +112,8 @@ export class Flux {
   private health = emptyHealth()
   private notifyState: NotifyState = EMPTY_NOTIFY_STATE
   private daily: DailyState = { date: '', status: 'none' }
+  private journal: WrapupJournal = emptyJournal('')
+  private savedJournal = ''
   private state: AppState | null = null
   private timer: NodeJS.Timeout | null = null
   private ticking = false
@@ -103,6 +136,8 @@ export class Flux {
         ...(JSON.parse(readFileSync(NOTIFY_FILE, 'utf8')) as Partial<NotifyState>),
       }
     }
+    this.journal = readJournal(new Date())
+    this.savedJournal = JSON.stringify(this.journal)
     this.topics = await this.store.load()
     this.store.watch(() => void this.reload())
     await this.tick()
@@ -161,6 +196,29 @@ export class Flux {
     topic.closedAt = new Date().toISOString()
     await this.hooks.closeThreads(topic)
     await this.store.save(topic)
+  }
+
+  // A free task ticked closes, a closed topic unticked reopens; what the sources settled stays as is
+  async checkWrapup(id: string, done: boolean): Promise<void> {
+    const wrapup = this.state?.wrapup
+    const line = [...(wrapup?.done ?? []), ...(wrapup?.focus ?? [])].find(entry => entry.id === id)
+    if (!line?.topicId || ('locked' in line && line.locked)) return
+    const topic = this.topic(line.topicId)
+    if (!topic) return
+    const now = new Date()
+    this.journal = forDay(this.journal, now)
+    if (done) {
+      this.journal = tick(this.journal, topic.id, now)
+      if (isFreeTask(topic) && topic.status !== 'done') await this.close(topic)
+    } else {
+      this.journal = untick(this.journal, topic.id)
+      if (topic.status === 'done') {
+        topic.status = 'open'
+        topic.closedAt = undefined
+        await this.store.save(topic)
+      }
+    }
+    await this.rebuild()
   }
 
   async refresh(): Promise<void> {
@@ -310,9 +368,21 @@ export class Flux {
         .filter(view => view.topic.status === 'open' && view.ball === ball)
         .sort(compareViews)
     const meeting = this.meetingStatus(now)
+    const queue = pick('me')
+    this.journal = observe(this.journal, views, now, source => this.health[source].ok)
+    const times = this.settings.values.wrapupTimes
+    const wrapup = buildWrapup({
+      journal: this.journal,
+      topics: this.topics,
+      views,
+      queue,
+      merged: this.github?.merged ?? [],
+      times,
+      now,
+    })
     const state: AppState = {
       generatedAt: now.toISOString(),
-      queue: pick('me'),
+      queue,
       active: views.filter(view => view.ball === 'agent'),
       waiting: pick('others'),
       dormant: pick('dormant'),
@@ -321,10 +391,18 @@ export class Flux {
       sources: this.health,
       meeting,
       daily: this.daily,
+      wrapup,
     }
     this.state = state
     this.hooks.onState(state)
     await this.writeSnapshot(state)
+
+    if (notify) {
+      const due = dueSlot(times, this.journal, now, meeting.current)
+      this.journal = { ...this.journal, fired: due.fired }
+      if (due.notify) this.hooks.onWrapup(wrapupNotification(wrapup, due.notify))
+    }
+    await this.saveJournal()
 
     if (notify && this.health.github.ok) {
       const { workdayStart, workdayEnd } = this.settings.values
@@ -338,6 +416,17 @@ export class Flux {
       await writeFile(NOTIFY_FILE, JSON.stringify(decision.state))
       decision.notifications.forEach(notification => this.hooks.onNotify(notification))
     }
+  }
+
+  private async saveJournal(): Promise<void> {
+    const content = JSON.stringify(this.journal)
+    if (content === this.savedJournal) return
+    await mkdir(WRAPUP_DIR, { recursive: true })
+    const path = journalFile(this.journal.date)
+    const draft = `${path}.${randomUUID()}.tmp`
+    await writeFile(draft, content)
+    await rename(draft, path)
+    this.savedJournal = content
   }
 
   private async writeSnapshot(state: AppState): Promise<void> {

@@ -1,10 +1,18 @@
-import { BellRing, Check, CircleAlert, Settings2, X } from 'lucide-react'
+import { BellRing, Check, CircleAlert, ListChecks, Plus, Settings2, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import type { NotificationAccess, Settings, SettingsPatch } from '../../shared/types'
 
 import { BrandIcon } from './Brand'
 
-type TextKey = Exclude<keyof SettingsPatch, 'onboarded'>
+type TextKey = Exclude<keyof SettingsPatch, 'onboarded' | 'wrapupTimes'>
+
+// A new reminder lands an hour after the last one
+function nextTime(times: string[]): string {
+  const last = [...times].sort().at(-1)
+  if (!last) return '11:00'
+  const hours = Math.min(Number(last.slice(0, 2)) + 1, 23)
+  return `${String(hours).padStart(2, '0')}${last.slice(2)}`
+}
 
 const ACCESS_LABEL: Record<NotificationAccess, string> = {
   authorized: 'Autorisées par macOS',
@@ -37,6 +45,12 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
     setPatch({})
     setSaved(true)
     setSettings(await window.flux.getSettings())
+  }
+
+  const times = patch.wrapupTimes ?? settings.wrapupTimes
+  const setTimes = (next: string[]) => {
+    setSaved(false)
+    setPatch(current => ({ ...current, wrapupTimes: next }))
   }
 
   const field = (key: TextKey) => ({
@@ -100,6 +114,45 @@ export function SettingsPanel({ onClose, onReplay }: { onClose(): void; onReplay
           onChange={field('dailyTime').onChange}
         />
       </label>
+
+      <section className="settings-wrapup">
+        <span className="label-title">
+          <ListChecks size={13} aria-hidden="true" />
+          Relances wrap-up
+        </span>
+        <div className="settings-times">
+          {times.map((time, index) => (
+            <span className="time-slot" key={index}>
+              <input
+                type="time"
+                value={time}
+                aria-label={`Relance ${index + 1}`}
+                onChange={event =>
+                  setTimes(times.map((entry, position) => (position === index ? event.target.value : entry)))
+                }
+              />
+              <button
+                type="button"
+                className="round glass small"
+                aria-label={`Retirer la relance de ${time}`}
+                onClick={() => setTimes(times.filter((_, position) => position !== index))}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          {times.length < 6 && (
+            <button type="button" className="pill glass small" onClick={() => setTimes([...times, nextTime(times)])}>
+              <Plus size={14} aria-hidden="true" />
+              Ajouter
+            </button>
+          )}
+        </div>
+        <small>
+          Les jours ouvrés, une notification t’invite à cocher ce qui est fait et à choisir la suite.
+          Pendant une réunion, elle attend la fin.
+        </small>
+      </section>
 
       <label>
         Raccourci de capture

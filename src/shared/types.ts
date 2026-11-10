@@ -120,6 +120,42 @@ export interface MergedPr {
   mergedAt: string
 }
 
+// How a task of the day got done: merged, closed in Flux, its ask left the queue, or ticked by hand
+export type WrapupOutcome = 'merged' | 'closed' | 'handled' | 'ticked'
+
+interface WrapupLine {
+  id: string
+  // Null for a merged PR no topic holds
+  topicId: string | null
+  // Still open in Flux, so the line can select it
+  live: boolean
+  ref: string | null
+  title: string
+  detail: string | null
+  url: string | null
+}
+
+export interface WrapupDone extends WrapupLine {
+  outcome: WrapupOutcome
+  at: string
+  // Settled by the source itself, a merge or an ask that left: the box stays ticked
+  locked: boolean
+}
+
+export interface WrapupFocus extends WrapupLine {
+  rank: Rank | null
+  since: string | null
+}
+
+export interface WrapupView {
+  date: string
+  // Latest reminder time reached today, and the one after it
+  slot: string | null
+  next: string | null
+  done: WrapupDone[]
+  focus: WrapupFocus[]
+}
+
 export interface AppState {
   generatedAt: string
   queue: TopicView[]
@@ -131,10 +167,12 @@ export interface AppState {
   sources: Record<SourceName, SourceHealth>
   meeting: { current: Meeting | null; next: Meeting | null }
   daily: DailyState
+  wrapup: WrapupView
 }
 
 export interface Settings {
   dailyTime: string
+  wrapupTimes: string[]
   captureShortcut: string
   workdayStart: number
   workdayEnd: number
@@ -145,6 +183,7 @@ export interface Settings {
 
 export interface SettingsPatch {
   dailyTime?: string
+  wrapupTimes?: string[]
   captureShortcut?: string
   linearKey?: string
   calendarUrl?: string
@@ -172,6 +211,9 @@ export interface FluxApi {
   onProgress(listener: (progress: SourceProgress) => void): () => void
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void
+  onOpenWrapup(listener: () => void): () => void
+  // Ticks or unticks a wrap-up line: a free task closes, a closed topic reopens
+  checkWrapup(id: string, done: boolean): Promise<void>
   refresh(): Promise<void>
   createNote(text: string): Promise<void>
   openCapture(): Promise<void>

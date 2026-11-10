@@ -116,11 +116,20 @@ function openCapture(): void {
   captureWindow = window
 }
 
-function showTopic(id: string): void {
+// A window just opened is still loading: the message waits for it
+function sendToMain(channel: string, ...args: unknown[]): void {
   const window = openMain()
-  const send = () => window.webContents.send('flux:open-topic', id)
+  const send = () => window.webContents.send(channel, ...args)
   if (window.webContents.isLoading()) window.webContents.once('did-finish-load', send)
   else send()
+}
+
+function showTopic(id: string): void {
+  sendToMain('flux:open-topic', id)
+}
+
+function showWrapup(): void {
+  sendToMain('flux:open-wrapup-view')
 }
 
 function trayLabel(state: AppState): string {
@@ -144,6 +153,7 @@ function buildTray(): void {
     tray?.popUpContextMenu(
       Menu.buildFromTemplate([
         { label: 'Ouvrir Flux', click: () => openMain() },
+        { label: 'Wrap-up', click: () => showWrapup() },
         { label: 'Nouvelle note', click: () => openCapture() },
         { label: 'Rafraîchir', click: () => void flux.refresh() },
         { type: 'separator' },
@@ -189,9 +199,7 @@ function notify(title: string, body: string, onClick: () => void): void {
 }
 
 function notifyDaily(): void {
-  notify('Daily prêt', 'Le récap du jour t’attend dans Flux.', () => {
-    openMain().webContents.send('flux:open-daily-view')
-  })
+  notify('Daily prêt', 'Le récap du jour t’attend dans Flux.', () => sendToMain('flux:open-daily-view'))
 }
 
 function requireTopic(id: string): Topic {
@@ -216,6 +224,9 @@ function registerIpc(): void {
     await flux.saveTopic(topic)
   })
   ipcMain.handle('flux:close-topic', (_event, id: string) => flux.closeTopic(id))
+  ipcMain.handle('flux:check-wrapup', (_event, id: string, done: boolean) =>
+    flux.checkWrapup(id, done),
+  )
   ipcMain.handle('flux:launch-thread', async (_event, id: string, action: ProposedAction) => {
     const view = flux.view(id)
     if (!view) throw new Error(`Sujet introuvable : ${id}`)
@@ -291,6 +302,7 @@ async function main(): Promise<void> {
       }
     },
     onNotify: ({ title, body, topicId }) => notify(title, body, () => showTopic(topicId)),
+    onWrapup: ({ title, body }) => notify(title, body, () => showWrapup()),
     fetchTickets: async keys => {
       const key = settings.secret('linearKey')
       if (!key) return null

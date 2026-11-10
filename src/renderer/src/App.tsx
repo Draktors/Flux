@@ -12,11 +12,14 @@ import { rankStyle, type RankStyle } from './rankStyle'
 import { SettingsPanel } from './SettingsPanel'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
+import { WrapupView } from './WrapupView'
 
-type ListTab = 'queue' | 'active' | 'waiting' | 'notes' | 'dormant'
-type Tab = ListTab | 'daily'
+type ListTab = 'queue' | 'active' | 'waiting' | 'notes'
+type SheetTab = 'wrapup' | 'daily'
+type Tab = ListTab | SheetTab
 
 const DAILY_READ_KEY = 'flux.dailyRead'
+const WRAPUP_READ_KEY = 'flux.wrapupRead'
 // The loading scene plays at least this long, then dissolves into the app
 const BOOT_MIN_MS = 1800
 const BOOT_EXIT_MS = 900
@@ -32,13 +35,21 @@ function allViews(state: AppState): TopicView[] {
   return [...state.queue, ...state.active, ...state.waiting, ...state.notes, ...state.dormant]
 }
 
+function isSheet(tab: Tab): tab is SheetTab {
+  return tab === 'wrapup' || tab === 'daily'
+}
+
+// Dormant topics close the waiting list: the wrap-up took their tab
+function listOf(state: AppState, tab: ListTab): TopicView[] {
+  return tab === 'waiting' ? [...state.waiting, ...state.dormant] : state[tab]
+}
+
 function tabFor(state: AppState, id: string): ListTab | null {
   const has = (views: TopicView[]) => views.some(view => view.topic.id === id)
   if (has(state.queue)) return 'queue'
   if (has(state.active)) return 'active'
-  if (has(state.waiting)) return 'waiting'
+  if (has(listOf(state, 'waiting'))) return 'waiting'
   if (has(state.notes)) return 'notes'
-  if (has(state.dormant)) return 'dormant'
   return null
 }
 
@@ -48,17 +59,17 @@ function emptyTitle(tab: ListTab, looseCount: number): string {
   return 'Rien ici pour le moment.'
 }
 
-function dailyRead(): string | null {
+function readMark(key: string): string | null {
   try {
-    return localStorage.getItem(DAILY_READ_KEY)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-function markDailyRead(date: string): void {
+function saveMark(key: string, value: string): void {
   try {
-    localStorage.setItem(DAILY_READ_KEY, date)
+    localStorage.setItem(key, value)
   } catch {
     return
   }
@@ -69,7 +80,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>('queue')
   const [selected, setSelected] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [readDate, setReadDate] = useState(dailyRead)
+  const [readDate, setReadDate] = useState(() => readMark(DAILY_READ_KEY))
+  const [readSlot, setReadSlot] = useState(() => readMark(WRAPUP_READ_KEY))
   const [onboarding, setOnboarding] = useState(false)
   const [sceneTint, setSceneTint] = useState<RankStyle | null>(null)
   const [settings, setSettings] = useState<FluxSettings | null>(null)
@@ -124,6 +136,14 @@ export function App() {
   )
 
   useEffect(() => window.flux.onOpenDaily(() => setTab('daily')), [])
+  useEffect(
+    () =>
+      window.flux.onOpenWrapup(() => {
+        setTab('wrapup')
+        setSettingsOpen(false)
+      }),
+    [],
+  )
 
   useEffect(() => {
     if (!state || !selected) return
@@ -133,22 +153,31 @@ export function App() {
 
   useEffect(() => {
     if (tab === 'daily' && state?.daily.status === 'ready') {
-      markDailyRead(state.daily.date)
+      saveMark(DAILY_READ_KEY, state.daily.date)
       setReadDate(state.daily.date)
     }
   }, [tab, state?.daily.status, state?.daily.date])
 
+  const wrapupMark = state?.wrapup.slot ? `${state.wrapup.date} ${state.wrapup.slot}` : null
+  useEffect(() => {
+    if (tab === 'wrapup' && wrapupMark) {
+      saveMark(WRAPUP_READ_KEY, wrapupMark)
+      setReadSlot(wrapupMark)
+    }
+  }, [tab, wrapupMark])
+
   const views = useMemo(() => (state ? allViews(state) : []), [state])
-  const listTab: ListTab = tab === 'daily' ? 'queue' : tab
-  const list = state ? state[listTab] : []
+  const sheet = isSheet(tab)
+  const listTab: ListTab = isSheet(tab) ? 'queue' : tab
+  const list = useMemo(() => (state ? listOf(state, listTab) : []), [state, listTab])
   const current =
-    (tab !== 'daily' && list.find(view => view.topic.id === selected)) ||
-    (tab !== 'daily' ? views.find(view => view.topic.id === selected) : undefined) ||
+    (!sheet && list.find(view => view.topic.id === selected)) ||
+    (!sheet ? views.find(view => view.topic.id === selected) : undefined) ||
     list[0]
   const looseItem =
     tab === 'waiting' ? state?.loose.find(item => looseId(item) === selected) : undefined
   const currentId = looseItem ? looseId(looseItem) : (current?.topic.id ?? null)
-  const isFresh = useSeen(state?.queue ?? [], tab === 'daily' ? null : currentId)
+  const isFresh = useSeen(state?.queue ?? [], sheet ? null : currentId)
   const focusRank = looseItem ? null : (current?.rank ?? null)
   const style = useMemo(() => rankStyle(focusRank), [focusRank])
   // Arrow keys walk the rail in order, loose items included
@@ -163,7 +192,7 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || tab === 'daily' || settingsOpen) return
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       const index = order.indexOf(currentId ?? '')
       const next = order[index + (event.key === 'ArrowRight' ? 1 : -1)]
@@ -174,7 +203,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [order, currentId, tab, settingsOpen])
+  }, [order, currentId, sheet, settingsOpen])
 
   // Same slot in both trees, so the scene keeps playing while the app appears underneath
   const bootScene =
@@ -211,9 +240,13 @@ export function App() {
   const tabs: Array<{ key: Tab; label: string; count: number }> = [
     { key: 'queue', label: 'File', count: state.queue.length },
     { key: 'active', label: 'En cours', count: state.active.length },
-    { key: 'waiting', label: 'Attente', count: state.waiting.length + state.loose.length },
+    {
+      key: 'waiting',
+      label: 'Attente',
+      count: state.waiting.length + state.dormant.length + state.loose.length,
+    },
     { key: 'notes', label: 'Notes', count: state.notes.length },
-    { key: 'dormant', label: 'Dormant', count: state.dormant.length },
+    { key: 'wrapup', label: 'Wrap-up', count: 0 },
     { key: 'daily', label: 'Daily', count: 0 },
   ]
   const failing = (Object.keys(state.sources) as SourceName[]).filter(
@@ -227,6 +260,7 @@ export function App() {
       ? `${state.meeting.next.title} ${until(state.meeting.next.start)}`
       : null
   const unreadDaily = state.daily.status === 'ready' && readDate !== state.daily.date
+  const unreadWrapup = wrapupMark !== null && readSlot !== wrapupMark
   const index = list.findIndex(view => view.topic.id === currentId)
   const position = tab === 'queue' && index >= 0 ? `${index + 1} sur ${list.length}` : null
 
@@ -260,6 +294,9 @@ export function App() {
                 {entry.count > 0 && <span className="count">{entry.count}</span>}
                 {entry.key === 'daily' && unreadDaily && (
                   <span className="unread" aria-label="Nouveau daily" />
+                )}
+                {entry.key === 'wrapup' && unreadWrapup && (
+                  <span className="unread" aria-label="Wrap-up à faire" />
                 )}
               </button>
             ))}
@@ -317,6 +354,14 @@ export function App() {
 
         {tab === 'daily' ? (
           <DailyView daily={state.daily} />
+        ) : tab === 'wrapup' ? (
+          <WrapupView
+            wrapup={state.wrapup}
+            onOpen={id => {
+              setSelected(id)
+              setTab(tabFor(state, id) ?? 'queue')
+            }}
+          />
         ) : (
           <>
             <main className="focus">

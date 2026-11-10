@@ -26,4 +26,6 @@ export const NOTIFY_FILE = join(STATE_DIR, 'notify.json')
 export const SETTINGS_FILE = join(STATE_DIR, 'settings.json')
 export const SECRETS_FILE = join(STATE_DIR, 'secrets.json')
 export const TRIAGE_FILE = join(STATE_DIR, 'triage.json')
+// One wrap-up journal per day, named after its date
+export const WRAPUP_DIR = join(STATE_DIR, 'wrapup')
 export const THREADS_DIR = join(STATE_DIR, 'threads')

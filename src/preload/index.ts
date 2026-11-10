@@ -24,6 +24,12 @@ const api: FluxApi = {
     ipcRenderer.on('flux:open-daily-view', handler)
     return () => ipcRenderer.removeListener('flux:open-daily-view', handler)
   },
+  onOpenWrapup(listener) {
+    const handler = () => listener()
+    ipcRenderer.on('flux:open-wrapup-view', handler)
+    return () => ipcRenderer.removeListener('flux:open-wrapup-view', handler)
+  },
+  checkWrapup: (id, done) => ipcRenderer.invoke('flux:check-wrapup', id, done),
   refresh: () => ipcRenderer.invoke('flux:refresh'),
   createNote: text => ipcRenderer.invoke('flux:create-note', text),
   openCapture: () => ipcRenderer.invoke('flux:open-capture'),

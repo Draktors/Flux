@@ -33,7 +33,7 @@ function compactDate(now: Date): string {
   return now.toISOString().slice(0, 10).replace(/-/g, '')
 }
 
-function isLinkedRef(link: string): boolean {
+export function isLinkedRef(link: string): boolean {
   return REF_PATTERN.test(link)
 }
 

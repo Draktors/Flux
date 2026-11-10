@@ -966,6 +966,172 @@ button.chip:hover {
   text-decoration: underline;
 }
 
+/* Wrap-up */
+
+.wrapup {
+  position: relative;
+  display: flex;
+  grid-row: 2 / 4;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 20px 28px 24px;
+}
+
+.wrapup-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: min(720px, 100%);
+  max-height: 100%;
+  padding: 30px 36px 32px;
+  overflow-y: auto;
+  border-radius: var(--radius-panel);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.wrapup-head h1 {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.wrapup-head p {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 13.5px;
+}
+
+.wrapup-section h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.wrapup-empty {
+  padding: 6px 0;
+  color: var(--text-3);
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  margin: 0 -12px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  transition: background 0.15s var(--ease);
+}
+
+.check-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.check-box {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.34);
+  appearance: none;
+  cursor: pointer;
+  transition:
+    background 0.18s var(--ease),
+    box-shadow 0.18s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+.check-box:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+.check-box:checked {
+  background: var(--ok);
+  box-shadow: none;
+}
+
+.check-box:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  border: solid var(--solid-ink);
+  border-width: 0 0 2px 2px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.check-box:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.check-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.check-main:disabled {
+  cursor: default;
+}
+
+.check-title,
+.check-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.check-main:hover:not(:disabled) .check-title {
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 3px;
+}
+
+.check-row.done .check-title {
+  color: var(--text-2);
+}
+
+.check-ref {
+  margin-right: 8px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.check-meta,
+.check-side {
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.check-side {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Réglages */
 
 .scrim {
@@ -1070,6 +1236,39 @@ button.chip:hover {
 
 .settings-notifications .access.warn {
   color: var(--waiting);
+}
+
+.settings-wrapup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.settings-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.settings .time-slot input {
+  width: 96px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+}
+
+.time-slot .round.small {
+  width: 26px;
+  height: 26px;
 }
 
 .settings-row {

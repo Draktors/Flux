@@ -14,6 +14,7 @@ const FRAGMENT = `fragment PR on PullRequest {
   number title url state isDraft updatedAt mergedAt closedAt headRefName reviewDecision mergeStateStatus
   repository { name } author { login }
   viewerLatestReview { state submittedAt }
+  latestOpinionatedReviews(first: 20) { nodes { author { login } state submittedAt } }
   viewerLatestReviewRequest { id }
   timelineItems(last: 3, itemTypes: [REVIEW_REQUESTED_EVENT]) {
     nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } }
@@ -51,6 +52,9 @@ export interface RawPullRequest {
   repository: { name: string }
   author: RawActor | null
   viewerLatestReview: { state: string; submittedAt: string | null } | null
+  latestOpinionatedReviews: {
+    nodes: Array<{ author: RawActor | null; state: string; submittedAt: string | null }>
+  }
   viewerLatestReviewRequest: { id: string } | null
   timelineItems: {
     nodes: Array<{ createdAt: string; requestedReviewer: { login?: string } | null }>
@@ -79,6 +83,14 @@ function normalizeThread(raw: RawThread): ReviewThread {
   }
 }
 
+// A comment posted after an approval does not withdraw it: only the latest approve or
+// request-changes review counts, and GitHub marks it dismissed when the repo voids stale approvals
+function approvedAt(raw: RawPullRequest, me: string): string | null {
+  const opinion = raw.latestOpinionatedReviews.nodes.find(review => review.author?.login === me)
+  const review = opinion ?? raw.viewerLatestReview
+  return review?.state === 'APPROVED' ? review.submittedAt : null
+}
+
 export function normalizePullRequest(raw: RawPullRequest, me: string): PullRequest {
   const commit = raw.commits.nodes[0]?.commit
   const pending = raw.reviews.nodes.find(review => review.author?.login === me)
@@ -101,6 +113,7 @@ export function normalizePullRequest(raw: RawPullRequest, me: string): PullReque
     ci: commit?.statusCheckRollup?.state ?? null,
     lastCommitAt: commit?.committedDate ?? raw.updatedAt,
     viewerReview: raw.viewerLatestReview,
+    approvedAt: approvedAt(raw, me),
     reviewRequested: raw.viewerLatestReviewRequest !== null,
     requestedAt: request?.createdAt ?? null,
     pendingReview: pending

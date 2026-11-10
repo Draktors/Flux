@@ -42,6 +42,7 @@ function pr(overrides: Partial<PullRequest>): PullRequest {
     ci: 'SUCCESS',
     lastCommitAt: '2026-11-06T08:00:00Z',
     viewerReview: null,
+    approvedAt: null,
     reviewRequested: false,
     requestedAt: null,
     pendingReview: null,
@@ -110,17 +111,6 @@ describe('règles unitaires', () => {
     expect(item.signals).toEqual([])
   })
 
-  it('ignore un push après une approbation', () => {
-    const item = itemFromPullRequest(
-      pr({
-        author: 'sam-lee',
-        viewerReview: { state: 'APPROVED', submittedAt: '2026-11-05T08:00:00Z' },
-      }),
-      context,
-    )
-    expect(item.ball).toBe('others')
-  })
-
   it('demande confirmation quand GitHub ne sait pas encore si la PR est mergeable', () => {
     const item = itemFromPullRequest(
       pr({ reviewDecision: 'APPROVED', mergeStateStatus: 'UNKNOWN' }),
@@ -135,6 +125,118 @@ describe('règles unitaires', () => {
       'OPS-125',
       'APP-978',
     ])
+  })
+})
+
+describe('PR que j’ai approuvée', () => {
+  const APPROVED_AT = '2026-11-05T10:00:00Z'
+  const approved = (overrides: Partial<PullRequest> = {}) =>
+    itemFromPullRequest(
+      pr({
+        author: 'sam-lee',
+        viewerReview: { state: 'APPROVED', submittedAt: APPROVED_AT },
+        approvedAt: APPROVED_AT,
+        ...overrides,
+      }),
+      context,
+    )
+
+  it('sort des reviews malgré les réponses sur mes fils', () => {
+    const item = approved({
+      threads: [{ resolved: false, firstAuthor: ME, lastAuthor: 'sam-lee', lastAt: '2026-11-05T11:00:00Z' }],
+    })
+    expect(item.signals).toEqual([])
+    expect(item.ball).toBe('others')
+  })
+
+  it('ne revient pas sur un push après l’approbation', () => {
+    expect(approved({ lastCommitAt: '2026-11-06T08:00:00Z' }).signals).toEqual([])
+  })
+
+  it('tient après un simple commentaire posté depuis', () => {
+    const item = approved({
+      viewerReview: { state: 'COMMENTED', submittedAt: '2026-11-05T12:00:00Z' },
+      lastCommitAt: '2026-11-06T08:00:00Z',
+    })
+    expect(item.signals).toEqual([])
+  })
+
+  it("revient quand l'auteur redemande ma review", () => {
+    const item = approved({ reviewRequested: true, requestedAt: '2026-11-06T09:30:00Z' })
+    expect(item.signals).toHaveLength(1)
+    expect(item.signals[0]).toMatchObject({
+      rank: 2,
+      action: 're-review',
+      detail: 'Review redemandée par sam',
+      since: '2026-11-06T09:30:00Z',
+    })
+  })
+
+  it("ignore une demande qui précède l'approbation", () => {
+    expect(approved({ reviewRequested: true, requestedAt: '2026-11-04T09:00:00Z' }).signals).toEqual([])
+    expect(approved({ reviewRequested: true, requestedAt: null }).signals).toEqual([])
+  })
+
+  it('garde un commentaire non soumis à soumettre', () => {
+    const item = approved({
+      pendingReview: { createdAt: '2026-11-06T08:00:00Z', updatedAt: '2026-11-06T09:00:00Z', comments: 1 },
+    })
+    expect(item.signals.map(signal => signal.rank)).toEqual([0])
+  })
+
+  it('repasse en review quand GitHub rejette mon approbation au push', () => {
+    const item = itemFromPullRequest(
+      pr({
+        author: 'sam-lee',
+        viewerReview: { state: 'DISMISSED', submittedAt: APPROVED_AT },
+        lastCommitAt: '2026-11-06T08:00:00Z',
+      }),
+      context,
+    )
+    expect(item.signals[0]).toMatchObject({ rank: 2, detail: 'push depuis ta review' })
+  })
+
+  it('lit mon approbation dans les données réelles', () => {
+    const approvedOf = (number: number) => prs.find(entry => entry.number === number)?.approvedAt
+    expect(approvedOf(1568)).toBe('2026-11-06T09:53:44Z')
+    expect(approvedOf(6967)).toBeNull()
+  })
+})
+
+describe('approbation lue depuis GitHub', () => {
+  const node = raw.data.search.nodes[0]
+  const approvedAtOf = (overrides: Partial<RawPullRequest>) =>
+    normalizePullRequest({ ...node, ...overrides }, ME).approvedAt
+  const opinion = (login: string, state: string) => ({
+    nodes: [{ author: { login }, state, submittedAt: '2026-11-05T10:00:00Z' }],
+  })
+
+  it('garde une approbation suivie d’un simple commentaire', () => {
+    expect(
+      approvedAtOf({
+        viewerLatestReview: { state: 'COMMENTED', submittedAt: '2026-11-06T10:00:00Z' },
+        latestOpinionatedReviews: opinion(ME, 'APPROVED'),
+      }),
+    ).toBe('2026-11-05T10:00:00Z')
+  })
+
+  it('perd l’approbation après une demande de changements ou un rejet', () => {
+    expect(approvedAtOf({ latestOpinionatedReviews: opinion(ME, 'CHANGES_REQUESTED') })).toBeNull()
+    expect(
+      approvedAtOf({
+        viewerLatestReview: { state: 'DISMISSED', submittedAt: '2026-11-05T10:00:00Z' },
+        latestOpinionatedReviews: { nodes: [] },
+      }),
+    ).toBeNull()
+  })
+
+  it("ne compte pas l'approbation d'un autre", () => {
+    expect(
+      approvedAtOf({
+        viewerLatestReview: { state: 'COMMENTED', submittedAt: '2026-11-06T10:00:00Z' },
+        latestOpinionatedReviews: opinion('sam-lee', 'APPROVED'),
+      }),
+    ).toBeNull()
   })
 })
 

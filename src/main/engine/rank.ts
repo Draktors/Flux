@@ -37,6 +37,7 @@ export interface PullRequest {
   ci: string | null
   lastCommitAt: string
   viewerReview: { state: string; submittedAt: string | null } | null
+  approvedAt: string | null
   reviewRequested: boolean
   requestedAt: string | null
   pendingReview: { updatedAt: string; createdAt: string; comments: number } | null
@@ -182,18 +183,26 @@ function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[
   return []
 }
 
+// An approval holds through pushes and replies: only the author asking me again brings the PR back.
+// A request older than the approval is a leftover, a team one for instance, not a new ask.
+function approvedSignals(pr: PullRequest, ref: string, approvedAt: string): Signal[] {
+  const requestedAt = pr.requestedAt
+  if (!pr.reviewRequested || requestedAt === null || requestedAt <= approvedAt) return []
+  return [
+    signal(ref, 're-review', 2, `Review redemandée par ${names([pr.author])}`, 're-review', requestedAt),
+  ]
+}
+
 function theirSignals(pr: PullRequest, ref: string, ctx: RankContext): Signal[] {
   const { me, now } = ctx
+  if (pr.approvedAt !== null) return approvedSignals(pr, ref, pr.approvedAt)
+
   const stale = ageDays(pr.updatedAt, now) > DORMANT_DAYS
   const replies = pr.threads.filter(
     thread => !thread.resolved && thread.firstAuthor === me && isHuman(thread.lastAuthor, me),
   )
   const review = pr.viewerReview
-  const pushed =
-    review !== null &&
-    review.state !== 'APPROVED' &&
-    review.submittedAt !== null &&
-    pr.lastCommitAt > review.submittedAt
+  const pushed = review !== null && review.submittedAt !== null && pr.lastCommitAt > review.submittedAt
 
   if (!stale && (replies.length > 0 || pushed)) {
     const dates = replies.map(thread => thread.lastAt)

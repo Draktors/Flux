@@ -654,6 +654,7 @@ export class Flux {
       merged: this.cache().github?.merged ?? [],
       times,
       now,
+      visible: topic => this.visibleTopic(topic),
     })
     const state: AppState = {
       generatedAt: now.toISOString(),

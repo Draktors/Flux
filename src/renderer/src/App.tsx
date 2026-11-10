@@ -4,10 +4,10 @@ import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '
 import { Boot, type BootProgress } from './Boot'
 import { DailyView } from './DailyView'
 import { until } from './format'
-import { Hero } from './Hero'
+import { Hero, LooseHero } from './Hero'
 import { Inspector } from './Inspector'
 import { Onboarding } from './Onboarding'
-import { Rail } from './Rail'
+import { looseId, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { SettingsPanel } from './SettingsPanel'
 import { Stage } from './Stage'
@@ -144,25 +144,36 @@ export function App() {
     (tab !== 'daily' && list.find(view => view.topic.id === selected)) ||
     (tab !== 'daily' ? views.find(view => view.topic.id === selected) : undefined) ||
     list[0]
-  const currentId = current?.topic.id ?? null
+  const looseItem =
+    tab === 'waiting' ? state?.loose.find(item => looseId(item) === selected) : undefined
+  const currentId = looseItem ? looseId(looseItem) : (current?.topic.id ?? null)
   const isFresh = useSeen(state?.queue ?? [], tab === 'daily' ? null : currentId)
-  const style = useMemo(() => rankStyle(current?.rank ?? null), [current?.rank])
+  const focusRank = looseItem ? null : (current?.rank ?? null)
+  const style = useMemo(() => rankStyle(focusRank), [focusRank])
+  // Arrow keys walk the rail in order, loose items included
+  const order = useMemo(
+    () => [
+      ...list.map(view => view.topic.id),
+      ...(tab === 'waiting' ? (state?.loose ?? []).map(looseId) : []),
+    ],
+    [list, tab, state?.loose],
+  )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       if (['INPUT', 'TEXTAREA'].includes(target.tagName) || tab === 'daily' || settingsOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-      const index = list.findIndex(view => view.topic.id === currentId)
-      const next = list[index + (event.key === 'ArrowRight' ? 1 : -1)]
+      const index = order.indexOf(currentId ?? '')
+      const next = order[index + (event.key === 'ArrowRight' ? 1 : -1)]
       if (next) {
         event.preventDefault()
-        setSelected(next.topic.id)
+        setSelected(next)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [list, currentId, tab, settingsOpen])
+  }, [order, currentId, tab, settingsOpen])
 
   // Same slot in both trees, so the scene keeps playing while the app appears underneath
   const bootScene =
@@ -292,7 +303,9 @@ export function App() {
         ) : (
           <>
             <main className="focus">
-              {current ? (
+              {looseItem ? (
+                <LooseHero key={currentId} item={looseItem} />
+              ) : current ? (
                 <>
                   <Hero key={current.topic.id} view={current} position={position} />
                   <Inspector key={`note-${current.topic.id}`} view={current} />

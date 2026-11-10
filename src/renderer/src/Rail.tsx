@@ -44,13 +44,31 @@ function Card({ view, selected, fresh, onSelect }: CardProps) {
   )
 }
 
-function LooseCard({ item }: { item: Item }) {
+export const looseId = (item: Item) => `loose:${item.ref}`
+
+interface LooseCardProps {
+  item: Item
+  selected: boolean
+  onSelect(id: string): void
+}
+
+function LooseCard({ item, selected, onSelect }: LooseCardProps) {
+  const element = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (selected) {
+      element.current?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+    }
+  }, [selected])
+
   return (
     <button
+      ref={element}
       type="button"
       className="card"
+      aria-current={selected ? 'true' : undefined}
       style={tint(rankStyle(null))}
-      onClick={() => void window.flux.openExternal(item.url)}
+      onClick={() => onSelect(looseId(item))}
     >
       <span className="card-head">
         <strong className="card-link">
@@ -126,7 +144,12 @@ export function Rail({ views, loose = [], grouped, selected, isFresh, onSelect }
         {loose.length > 0 && (
           <Group label="En attente">
             {loose.map(item => (
-              <LooseCard key={item.ref} item={item} />
+              <LooseCard
+                key={item.ref}
+                item={item}
+                selected={looseId(item) === selected}
+                onSelect={onSelect}
+              />
             ))}
           </Group>
         )}

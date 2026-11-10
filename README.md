@@ -15,6 +15,7 @@ Chaque sujet est une note Markdown dans ton vault (Obsidian ou autre). Depuis un
 ## Prérequis
 
 - macOS sur Apple Silicon, Node 20+ et pnpm
+- Les outils en ligne de commande Xcode (`xcode-select --install`), pour compiler le petit module natif qui lit l’autorisation des notifications
 - [GitHub CLI](https://cli.github.com) connectée à ton hôte GitHub (`gh auth login`)
 - [Claude Code](https://claude.com/claude-code) et Claude Desktop
 - Une clef API personnelle Linear et l'adresse iCal secrète de ton agenda (facultatives)

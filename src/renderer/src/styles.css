@@ -76,10 +76,6 @@ input {
   outline-offset: 2px;
 }
 
-.boot {
-  height: 100%;
-  background: var(--ink);
-}
 
 .filters {
   position: absolute;
@@ -1373,6 +1369,240 @@ button.chip:hover {
 
   .card {
     background: color-mix(in srgb, var(--tint-main) 45%, #15171f);
+  }
+}
+
+/* Chargement */
+
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  transition:
+    opacity 0.9s var(--ease),
+    transform 0.9s var(--ease),
+    filter 0.9s var(--ease);
+}
+
+.boot-screen.leaving {
+  opacity: 0;
+  transform: scale(1.06);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.boot-screen .stage {
+  animation: boot-dawn 1.8s ease-out both;
+}
+
+.boot-veil {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 50%,
+    rgba(5, 6, 12, 0.18),
+    rgba(5, 6, 12, 0.72) 78%
+  );
+}
+
+.boot-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 560px;
+  padding: 0 16px;
+  text-align: center;
+  transition: transform 0.9s var(--ease);
+}
+
+.boot-screen.leaving .boot-content {
+  transform: translateY(-18px);
+}
+
+.boot-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  margin-bottom: 10px;
+  animation: boot-rise 1s var(--ease) 0.1s both;
+}
+
+.boot-orbit {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 55%, var(--tint-light) 85%, #fff 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  animation: spin 2.2s linear infinite;
+  transition: background 1.2s var(--ease);
+}
+
+.boot-core {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  color: var(--text);
+  animation: boot-pulse 2.4s ease-in-out infinite;
+}
+
+.boot-title {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 0.28em;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.024em;
+}
+
+.boot-title span {
+  display: inline-block;
+  animation: boot-rise 0.9s var(--ease) both;
+  animation-delay: calc(0.3s + var(--i) * 0.09s);
+}
+
+.boot-sub {
+  color: var(--text-2);
+  font-size: 15px;
+  animation: boot-rise 0.9s var(--ease) 0.75s both;
+}
+
+.boot-bar {
+  position: relative;
+  width: 260px;
+  height: 3px;
+  margin: 10px 0 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  animation: boot-rise 0.9s var(--ease) 0.85s both;
+}
+
+.boot-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--tint-main), var(--tint-light) 70%, #fff);
+  transform-origin: left center;
+  transition: transform 0.8s var(--ease);
+}
+
+.boot-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  animation: boot-sheen 1.6s ease-in-out infinite;
+}
+
+.boot-sources {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  list-style: none;
+}
+
+.boot-sources li {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 0.5px var(--hairline);
+  font-size: 13px;
+  font-weight: 500;
+  animation: boot-rise 0.8s var(--ease) both;
+  animation-delay: calc(1s + var(--i) * 0.08s);
+  transition:
+    background 0.4s var(--ease),
+    box-shadow 0.4s var(--ease);
+}
+
+.boot-sources small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.boot-sources li.ok {
+  background: rgba(50, 215, 75, 0.12);
+  box-shadow: inset 0 0 0 0.5px rgba(50, 215, 75, 0.45);
+}
+
+.boot-sources li.ok small {
+  color: var(--ok);
+}
+
+.boot-sources li.error small {
+  color: var(--waiting);
+}
+
+.boot-sources li.off {
+  opacity: 0.6;
+}
+
+/* The app arrives from beneath the scene */
+.app > .topbar,
+.app > .focus,
+.app > .rail,
+.app > .daily {
+  transition:
+    opacity 0.9s var(--ease),
+    transform 0.9s var(--ease),
+    filter 0.9s var(--ease);
+}
+
+.app.booting > .topbar,
+.app.booting > .focus,
+.app.booting > .rail,
+.app.booting > .daily {
+  opacity: 0;
+  transform: translateY(16px) scale(0.985);
+  filter: blur(8px);
+}
+
+@keyframes boot-dawn {
+  from {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes boot-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(8px);
+  }
+}
+
+@keyframes boot-pulse {
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 40px color-mix(in srgb, var(--tint-light) 55%, transparent);
+  }
+}
+
+@keyframes boot-sheen {
+  to {
+    transform: translateX(100%);
   }
 }
 

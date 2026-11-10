@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
-import type { CheckResult, Rank, Settings } from '../../shared/types'
+import type { CheckResult, NotificationAccess, Rank, Settings } from '../../shared/types'
 
 import { BrandIcon, type Brand } from './Brand'
 import { rankStyle, tint, type RankStyle } from './rankStyle'
@@ -80,8 +80,7 @@ const STEPS: Step[] = [
     icon: BellRing,
     eyebrow: 'Dernier réglage',
     title: 'Notifications',
-    text: 'Flux te prévient quand un sujet passe devant. Envoie un essai : la première fois, macOS te demande l’autorisation, clique sur Autoriser.',
-    help: 'Rien ne s’affiche ? Flux est sans doute refusé dans Réglages Système → Notifications.',
+    text: 'Flux te prévient quand un sujet passe devant ou que ton daily est prêt. macOS te demande ton accord une seule fois.',
   },
   {
     key: 'done',
@@ -94,6 +93,32 @@ const STEPS: Step[] = [
 ]
 
 type Status = { state: 'idle' } | { state: 'checking' } | ({ state: 'done' } & CheckResult)
+
+const allowed = (access: NotificationAccess | null) =>
+  access === 'authorized' || access === 'provisional'
+
+function accessStatus(access: NotificationAccess | null, asking: boolean): Status {
+  if (asking)
+    return { state: 'done', ok: true, detail: 'Réponds à la demande de macOS en haut à droite.' }
+  if (access === null) return { state: 'checking' }
+  if (allowed(access)) return { state: 'done', ok: true, detail: 'Notifications autorisées' }
+  if (access === 'denied') {
+    return {
+      state: 'done',
+      ok: false,
+      detail:
+        'macOS bloque les notifications de Flux. Active-les dans les réglages, Flux revérifie à ton retour.',
+    }
+  }
+  if (access === 'unsupported') {
+    return {
+      state: 'done',
+      ok: false,
+      detail: 'Flux ne peut pas lire l’autorisation : envoie un essai.',
+    }
+  }
+  return { state: 'idle' }
+}
 
 const CHECKS: Record<SecretKey, (value: string) => Promise<CheckResult>> = {
   linearKey: value => window.flux.checkLinearKey(value),
@@ -128,6 +153,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const [value, setValue] = useState('')
   const [status, setStatus] = useState<Status>({ state: 'idle' })
   const [github, setGithub] = useState<Status>({ state: 'idle' })
+  const [access, setAccess] = useState<NotificationAccess | null>(null)
+  const [asking, setAsking] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   const step = STEPS[index]
   const style = rankStyle(step.rank)
@@ -143,6 +170,23 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
     if (step.key === 'github' && github.state === 'idle') void verifyGithub()
     input.current?.focus()
   }, [index])
+
+  // Back from System Settings, the window regains focus: read the permission again
+  useEffect(() => {
+    if (step.key !== 'notifications') return
+    const refresh = () => void window.flux.notificationAccess().then(setAccess)
+    refresh()
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [step.key])
+
+  const askNotifications = async () => {
+    setAsking(true)
+    const answer = await window.flux.requestNotificationAccess()
+    setAsking(false)
+    setAccess(answer)
+    if (allowed(answer)) void window.flux.testNotification()
+  }
 
   const verifyGithub = async () => {
     setGithub({ state: 'checking' })
@@ -170,6 +214,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const submit = (event: FormEvent) => {
     event.preventDefault()
     if (step.key === 'done') return void finish()
+    if (step.key === 'notifications' && access === 'not-determined') return void askNotifications()
     if (step.secret && value.trim() && !(status.state === 'done' && status.ok)) {
       return void saveSecret(step.secret.name)
     }
@@ -182,6 +227,8 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
   const primary = (() => {
     if (step.key === 'welcome') return 'Commencer'
     if (step.key === 'done') return 'Ouvrir Flux'
+    if (step.key === 'notifications' && access === 'not-determined')
+      return 'Autoriser les notifications'
     if (step.secret && value.trim() && !verified) return 'Vérifier et enregistrer'
     return 'Continuer'
   })()
@@ -190,6 +237,7 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
         { label: 'GitHub', ok: github.state === 'done' && github.ok },
         { label: 'Linear', ok: settings.hasLinearKey },
         { label: 'Agenda', ok: settings.hasCalendarUrl },
+        { label: 'Notifications', ok: allowed(access) },
       ]
     : []
 
@@ -266,25 +314,29 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
 
           {step.key === 'notifications' && (
             <>
+              <StatusLine status={accessStatus(access, asking)} />
               <div className="onboarding-buttons">
-                <button
-                  type="button"
-                  className="pill glass small"
-                  onClick={() => void window.flux.testNotification()}
-                >
-                  <BellRing size={15} aria-hidden="true" />
-                  Envoyer un essai
-                </button>
-                <button
-                  type="button"
-                  className="pill glass small"
-                  onClick={() => void window.flux.openNotificationSettings()}
-                >
-                  <Settings2 size={15} aria-hidden="true" />
-                  Ouvrir les réglages
-                </button>
+                {(allowed(access) || access === 'unsupported') && (
+                  <button
+                    type="button"
+                    className="pill glass small"
+                    onClick={() => void window.flux.testNotification()}
+                  >
+                    <BellRing size={15} aria-hidden="true" />
+                    Envoyer un essai
+                  </button>
+                )}
+                {(access === 'denied' || access === 'unsupported') && (
+                  <button
+                    type="button"
+                    className="pill glass small"
+                    onClick={() => void window.flux.openNotificationSettings()}
+                  >
+                    <Settings2 size={15} aria-hidden="true" />
+                    Ouvrir les réglages
+                  </button>
+                )}
               </div>
-              <small className="onboarding-help">{step.help}</small>
             </>
           )}
 
@@ -311,12 +363,17 @@ export function Onboarding({ onTint, onDone }: { onTint(style: RankStyle): void;
               Retour
             </button>
           )}
-          {step.secret && !saved && !verified && (
+          {((step.secret && !saved && !verified) ||
+            (step.key === 'notifications' && access === 'not-determined')) && (
             <button type="button" className="onboarding-later" onClick={next}>
               Plus tard
             </button>
           )}
-          <button type="submit" className="pill solid" disabled={status.state === 'checking'}>
+          <button
+            type="submit"
+            className="pill solid"
+            disabled={status.state === 'checking' || asking}
+          >
             {primary}
             <ArrowRight size={16} aria-hidden="true" />
           </button>

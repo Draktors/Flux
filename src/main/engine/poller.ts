@@ -9,6 +9,7 @@ import type {
   Meeting,
   SourceHealth,
   SourceName,
+  SourceProgress,
   Topic,
   TopicView,
 } from '../../shared/types'
@@ -27,6 +28,8 @@ const CALENDAR_EVERY_TICKS = 15
 
 export interface FluxHooks {
   onState(state: AppState): void
+  // Each source as soon as it answers, so the first load can show its progress
+  onProgress?(progress: SourceProgress): void
   onNotify(notification: FluxNotification): void
   fetchTickets(keys: string[]): Promise<Ticket[] | null>
   fetchMeetings(): Promise<Meeting[] | null>
@@ -177,6 +180,7 @@ export class Flux {
     this.health[source] = error
       ? { ok: false, at: this.health[source].at, error: (error as Error).message }
       : { ok: true, at }
+    this.hooks.onProgress?.({ source, ok: !error })
   }
 
   private async tick(): Promise<void> {

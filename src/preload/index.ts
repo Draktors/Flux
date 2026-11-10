@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppState, FluxApi } from '../shared/types'
+import type { AppState, FluxApi, SourceProgress } from '../shared/types'
 
 const api: FluxApi = {
   getState: () => ipcRenderer.invoke('flux:get-state'),
@@ -7,6 +7,11 @@ const api: FluxApi = {
     const handler = (_event: unknown, state: AppState) => listener(state)
     ipcRenderer.on('flux:state', handler)
     return () => ipcRenderer.removeListener('flux:state', handler)
+  },
+  onProgress(listener) {
+    const handler = (_event: unknown, progress: SourceProgress) => listener(progress)
+    ipcRenderer.on('flux:progress', handler)
+    return () => ipcRenderer.removeListener('flux:progress', handler)
   },
   onOpenTopic(listener) {
     const handler = (_event: unknown, id: string) => listener(id)
@@ -31,6 +36,8 @@ const api: FluxApi = {
   saveSettings: patch => ipcRenderer.invoke('flux:save-settings', patch),
   testNotification: () => ipcRenderer.invoke('flux:test-notification'),
   openNotificationSettings: () => ipcRenderer.invoke('flux:open-notification-settings'),
+  notificationAccess: () => ipcRenderer.invoke('flux:notification-access'),
+  requestNotificationAccess: () => ipcRenderer.invoke('flux:request-notification-access'),
   checkGithub: () => ipcRenderer.invoke('flux:check-github'),
   checkLinearKey: key => ipcRenderer.invoke('flux:check-linear-key', key),
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),

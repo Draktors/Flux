@@ -16,6 +16,7 @@ import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/t
 import { Flux } from './engine/poller'
 import { Daily } from './llm/daily'
 import { Triage } from './llm/triage'
+import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkLinearKey } from './onboarding'
 import { ARCHIVE_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar } from './sources/calendar'
@@ -249,6 +250,8 @@ function registerIpc(): void {
     notify('Flux', 'Les notifications arrivent bien.', () => openMain())
   })
   ipcMain.handle('flux:open-notification-settings', () => openNotificationSettings())
+  ipcMain.handle('flux:notification-access', () => notificationAccess())
+  ipcMain.handle('flux:request-notification-access', () => requestNotificationAccess())
   ipcMain.handle('flux:check-github', () => checkGithub())
   ipcMain.handle('flux:check-linear-key', (_event, key: string) => checkLinearKey(key))
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
@@ -278,6 +281,11 @@ async function main(): Promise<void> {
       tray?.setTitle(trayLabel(state))
       for (const window of BrowserWindow.getAllWindows()) {
         window.webContents.send('flux:state', state)
+      }
+    },
+    onProgress(progress) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        window.webContents.send('flux:progress', progress)
       }
     },
     onNotify: ({ title, body, topicId }) => notify(title, body, () => showTopic(topicId)),

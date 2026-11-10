@@ -5,7 +5,7 @@ import { BIN } from '../paths'
 
 export interface Commit {
   repo: string
-  // GitHub owner/name of origin, e.g. citopia-jvs/cc-mobile; null without a GitHub remote
+  // GitHub owner/name of origin, e.g. acme/app; null without a GitHub remote
   remote: string | null
   // Ref the commit was reached from, e.g. refs/heads/feat/sms
   ref: string

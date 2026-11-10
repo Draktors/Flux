@@ -17,13 +17,13 @@ function defaultDailyCommand(): string {
 export interface Workspace {
   id: string;
   label: string;
-  // Short name shown in the switch (PP, CC…); defaults to the label
+  // Short name shown in the switch (WEB, APP…); defaults to the label
   short?: string;
   // Jira project keys whose tickets belong to this workspace
   jiraProjects: string[];
   // Linear team keys whose tickets belong to this workspace
   linearTeams?: string[];
-  // Words that name the product in a call title or summary (Communicity, citopia…)
+  // Words that name the product in a call title or summary (boutique, checkout…)
   keywords?: string[];
   github: {
     // Organisation the repos live in; falls back to github.owner

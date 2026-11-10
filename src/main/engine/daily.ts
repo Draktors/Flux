@@ -101,11 +101,11 @@ export interface DailyInput {
   git?: GitActivity | null
   // Meetings of this workspace since the previous workday, already over
   meetings?: Meeting[]
-  // Ticket prefixes of the workspace (DEVPP, CCM…), to read keys in branch names
+  // Ticket prefixes of the workspace (WEB, APP…), to read keys in branch names
   ticketPrefixes?: string[]
 }
 
-// Ticket keys in a branch or commit message: feature/CCM-11_sms names CCM-11, whatever the case
+// Ticket keys in a branch or commit message: feature/APP-11_login names APP-11, whatever the case
 // or what follows; with known prefixes, only those count, so step-2 is never a ticket
 export function branchTickets(text: string, prefixes: string[] = []): string[] {
   const keys = new Set<string>()

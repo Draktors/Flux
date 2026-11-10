@@ -20,9 +20,9 @@ export function DailyView({ daily }: { daily: DailyState }) {
   }, [daily.status, daily.date])
 
   return (
-    <main className="daily">
-      <div className="daily-sheet glass-dark">
-        <header>
+    <main className="page">
+      <div className="page-column daily">
+        <header className="daily-actions">
           <button
             type="button"
             className="pill glass small"

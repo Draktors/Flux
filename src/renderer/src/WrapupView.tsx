@@ -80,8 +80,8 @@ export function WrapupView({ wrapup, onOpen }: { wrapup: Wrapup; onOpen(topicId:
   }
 
   return (
-    <main className="wrapup">
-      <div className="wrapup-sheet glass-dark">
+    <main className="page">
+      <div className="page-column wrapup">
         <header className="wrapup-head">
           <h1>{wrapup.slot ? `Wrap-up de ${wrapup.slot}` : 'Wrap-up'}</h1>
           <p>{subtitle(wrapup)}</p>

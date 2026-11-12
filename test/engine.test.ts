@@ -625,3 +625,12 @@ describe('fichiers sujet', () => {
     expect(note.id).toMatch(/relancer-sam-sur-l-ecran$/)
   })
 })
+
+describe('noms courts des logins', () => {
+  it('garde le prénom, ou tout le login quand le début est trop court', async () => {
+    const { shortLogin } = await import('../src/main/engine/rank')
+    expect(shortLogin('sam-lee')).toBe('sam')
+    expect(shortLogin('Le-Polemil')).toBe('Le-Polemil')
+    expect(shortLogin('fredericJeanJvs')).toBe('fredericJeanJvs')
+  })
+})

@@ -16,17 +16,19 @@ import {
   type WebContents,
 } from 'electron'
 import { FLUX_SCHEME, linkMenuEntries, parseFluxLink, type LinkMenu } from '../shared/links'
-import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
+import type { AppState, ProjectOptions, ProposedAction, SettingsPatch, Topic } from '../shared/types'
 import { CONFIG } from './config'
 import { Flux } from './engine/poller'
 import { Daily, localDate } from './llm/daily'
 import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
 import { Triage } from './llm/triage'
 import { notificationAccess, requestNotificationAccess } from './notificationAccess'
-import { checkCalendarUrl, checkGithub, checkLinearKey } from './onboarding'
+import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
 import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar } from './sources/calendar'
-import { fetchCompleted, fetchLinear } from './sources/linear'
+import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
+import { fetchJira, listJiraProjects } from './sources/jira'
+import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
 import { fetchStoreReviews } from './sources/stores'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
@@ -82,6 +84,13 @@ function openMain(): BrowserWindow {
     },
   })
   window.once('ready-to-show', () => window.show())
+  // ⌘R refreshes Flux's sources instead of reloading the window
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.meta && !input.shift && input.key.toLowerCase() === 'r') {
+      event.preventDefault()
+      window.webContents.send('flux:refresh-shortcut')
+    }
+  })
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
@@ -248,6 +257,37 @@ function requireTopic(id: string): Topic {
   return topic
 }
 
+// What the projects picker offers: every Jira project and Linear team you can see, and your repos
+async function listProjects(): Promise<ProjectOptions> {
+  const errors: string[] = []
+  const settled = async <T>(label: string, task: Promise<T>, fallback: T): Promise<T> =>
+    task.catch(error => {
+      errors.push(`${label} : ${(error as Error).message}`)
+      return fallback
+    })
+  const token = settings.secret('jiraToken')
+  const email = settings.values.jiraEmail
+  const site = settings.jiraSite()
+  const linearKey = settings.secret('linearKey')
+  const [jira, linear, recent] = await Promise.all([
+    settings.uses('jira') && token && email && site
+      ? settled('Jira', listJiraProjects({ site, email, token }), [])
+      : [],
+    settings.uses('linear') && linearKey ? settled('Linear', listLinearTeams(linearKey), []) : [],
+    settled('GitHub', listRecentRepos(settings.values.githubAccount), []),
+  ])
+  // Repos already attached stay listed even without a recent PR
+  const attached = (settings.values.projects ?? []).flatMap(project => project.repos)
+  return {
+    projects: [
+      ...jira.map(project => ({ tracker: 'jira' as const, ...project })),
+      ...linear.map(team => ({ tracker: 'linear' as const, ...team })),
+    ],
+    repos: [...new Set([...recent, ...attached])],
+    errors,
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', () => flux.refresh())
@@ -302,9 +342,19 @@ function registerIpc(): void {
   })
   ipcMain.handle('flux:get-settings', () => settings.public())
   ipcMain.handle('flux:save-settings', async (_event, patch: SettingsPatch) => {
-    settings.apply(patch)
+    settings.apply(
+      patch.jiraSite === undefined ? patch : { ...patch, jiraSite: normalizeJiraSite(patch.jiraSite) },
+    )
+    // Switching or editing workspaces only redraws from the cache; a new workspace is fetched
+    // by the next tick, which reads any workspace it has no data for yet
+    if (Object.keys(patch).every(key => key === 'workspace' || key === 'projects')) {
+      if (patch.projects !== undefined) flux.forgetOtherWorkspaces()
+      void flux.switchWorkspace()
+      return
+    }
     registerCapture()
-    await flux.reloadSources()
+    // The panel closes as soon as settings are written; sources reload in the background
+    void flux.reloadSources()
   })
   ipcMain.handle('flux:test-notification', () => {
     notify('Flux', 'Les notifications arrivent bien.', () => openMain())
@@ -312,8 +362,16 @@ function registerIpc(): void {
   ipcMain.handle('flux:open-notification-settings', () => openNotificationSettings())
   ipcMain.handle('flux:notification-access', () => notificationAccess())
   ipcMain.handle('flux:request-notification-access', () => requestNotificationAccess())
-  ipcMain.handle('flux:check-github', () => checkGithub())
+  ipcMain.handle('flux:check-github', () => checkGithub(settings.values.githubAccount))
+  ipcMain.handle('flux:github-accounts', async () => ({
+    host: GITHUB_HOST,
+    ...(await listGithubAccounts()),
+  }))
   ipcMain.handle('flux:check-linear-key', (_event, key: string) => checkLinearKey(key))
+  ipcMain.handle('flux:check-jira', (_event, site: string, email: string, token: string) =>
+    checkJira(site, email, token),
+  )
+  ipcMain.handle('flux:list-projects', () => listProjects())
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
   ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))
   ipcMain.handle('flux:open-daily', () => {
@@ -364,7 +422,7 @@ async function main(): Promise<void> {
     onWrapup: ({ title, body }) => notify(title, body, () => showWrapup()),
     fetchTickets: async keys => {
       const key = settings.secret('linearKey')
-      if (!key) return null
+      if (!key || !settings.uses('linear')) return null
       const tickets = await fetchLinear(key, keys)
       await triage.apply(tickets)
       return tickets
@@ -374,9 +432,17 @@ async function main(): Promise<void> {
       return key ? fetchCompleted(key, since) : []
     },
     fetchReviews: async () => (CONFIG.daily.stores.apps.length > 0 ? fetchStoreReviews(CONFIG.daily.stores) : null),
+    fetchJira: async (keys, projects) => {
+      const token = settings.secret('jiraToken')
+      const email = settings.values.jiraEmail
+      const site = settings.jiraSite()
+      if (!settings.uses('jira') || !site || !email || !token) return null
+      // Without workspaces, every project you are assigned in counts
+      return fetchJira({ site, email, token }, projects, keys)
+    },
     fetchMeetings: async () => {
       const url = settings.secret('calendarUrl')
-      return url ? fetchCalendar(url) : null
+      return url && settings.calendar() ? fetchCalendar(url) : null
     },
     closeThreads: topic => closeThreads(topic, flux.liveSessions()),
     adoptThreads: topics => adoptThreads(topics, THREADS_DIR),
@@ -388,6 +454,8 @@ async function main(): Promise<void> {
 
   daily.sync(new Date())
   registerIpc()
+  // Warm the account list so the settings panel opens with profile pictures already there
+  void listGithubAccounts().catch(() => undefined)
   buildTray()
   registerCapture()
   openMain()

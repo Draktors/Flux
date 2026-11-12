@@ -1,4 +1,14 @@
-import { CalendarClock, Plug, Plus, RefreshCw, Search as SearchIcon, Settings, Waves } from 'lucide-react'
+import {
+  CalendarClock,
+  CloudOff,
+  Layers,
+  Plug,
+  Plus,
+  RefreshCw,
+  Search as SearchIcon,
+  Settings,
+  Waves,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseFluxLink } from '../../shared/links'
 import type { AppState, Settings as FluxSettings, SourceName } from '../../shared/types'
@@ -24,6 +34,7 @@ import { ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { Search } from './Search'
 import { SettingsPanel } from './SettingsPanel'
+import { Toast, type ToastMessage } from './Toast'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
 import { WrapupView } from './WrapupView'
@@ -34,11 +45,11 @@ const WRAPUP_READ_KEY = 'flux.wrapupRead'
 // The loading scene plays at least this long, then dissolves into the app
 const BOOT_MIN_MS = 1800
 const BOOT_EXIT_MS = 900
-const TOAST_MS = 4000
 
 const SOURCE_LABEL: Record<SourceName, string> = {
   github: 'GitHub',
   linear: 'Linear',
+  jira: 'Jira',
   agents: 'Agents',
   calendar: 'Agenda',
 }
@@ -74,6 +85,11 @@ export function App() {
   const [tab, setTab] = useState<Tab>('queue')
   const [selected, setSelected] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // Which page the settings window opens on: the selector's button goes straight to Espaces
+  const [settingsView, setSettingsView] = useState<'main' | 'workspaces'>('main')
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const showToast = (text: string, tone: ToastMessage['tone'] = 'ok') =>
+    setToast({ id: Date.now(), text, tone })
   const [readDate, setReadDate] = useState(() => readMark(DAILY_READ_KEY))
   const [readSlot, setReadSlot] = useState(() => readMark(WRAPUP_READ_KEY))
   const [onboarding, setOnboarding] = useState(false)
@@ -85,8 +101,36 @@ export function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   // A flux:// link waits for the first state before it can land
   const [link, setLink] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
   const bootStart = useRef(performance.now())
+
+  // Refetches every source, calendar included; the button and ⌘R share it
+  const refreshAll = () => {
+    if (refreshing) return
+    setRefreshing(true)
+    window.flux
+      .refreshAll()
+      .catch(error => showToast(`Actualisation impossible : ${(error as Error).message}`, 'error'))
+      .finally(() => setRefreshing(false))
+  }
+
+  useEffect(() => window.flux.onRefreshShortcut(refreshAll))
+
+  // Chosen workspace until the main process confirms it with a new state
+  const [switching, setSwitching] = useState<string | null>(null)
+
+  const switchWorkspace = (id: string) => {
+    if (id === (switching ?? state?.workspace)) return
+    setSwitching(id)
+    setSelected(null)
+    window.flux.saveSettings({ workspace: id }).catch(error => {
+      setSwitching(null)
+      showToast(`Changement d’espace impossible : ${(error as Error).message}`, 'error')
+    })
+  }
+
+  useEffect(() => {
+    if (switching && state?.workspace === switching) setSwitching(null)
+  }, [state?.workspace])
 
   useEffect(() => {
     void window.flux.getSettings().then(loaded => {
@@ -145,7 +189,10 @@ export function App() {
     const route = parseFluxLink(link)
     const target = route ? resolveRoute(state, route) : null
     if (!target) {
-      setToast(route && route.kind !== 'tab' ? `Plus dans Flux : ${route.kind === 'ref' ? route.ref : route.id}` : 'Lien Flux inconnu')
+      showToast(
+        route && route.kind !== 'tab' ? `Plus dans Flux : ${route.kind === 'ref' ? route.ref : route.id}` : 'Lien Flux inconnu',
+        'error',
+      )
       return
     }
     setSettingsOpen(false)
@@ -153,12 +200,6 @@ export function App() {
     setTab(target.tab)
     setSelected(target.selected)
   }, [link, state])
-
-  useEffect(() => {
-    if (!toast) return undefined
-    const timer = setTimeout(() => setToast(null), TOAST_MS)
-    return () => clearTimeout(timer)
-  }, [toast])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -289,15 +330,19 @@ export function App() {
     { key: 'daily', label: 'Daily', count: 0 },
   ]
   const failing = (Object.keys(state.sources) as SourceName[]).filter(
-    name => !state.sources[name].ok,
+    name => !state.sources[name]?.ok,
   )
-  const toConnect = failing.filter(name => !state.sources[name].at)
-  const offline = failing.filter(name => state.sources[name].at)
+  // Before its first answer a source is just loading: only an unconfigured one asks to connect
+  const toConnect = failing.filter(name => state.sources[name]?.missing)
+  const offline = failing.filter(name => state.sources[name]?.error && !state.sources[name]?.missing)
+  // The title gives way to the time when the bar runs short
   const meeting = state.meeting.current
-    ? `En réunion : ${state.meeting.current.title}`
+    ? { title: state.meeting.current.title, when: 'en cours' }
     : state.meeting.next
-      ? `${state.meeting.next.title} ${until(state.meeting.next.start)}`
+      ? { title: state.meeting.next.title, when: until(state.meeting.next.start) }
       : null
+  const offlineLabel = offline.map(name => SOURCE_LABEL[name]).join(', ')
+  const connectLabel = toConnect.map(name => SOURCE_LABEL[name]).join(', ')
   const unreadDaily = state.daily.status === 'ready' && readDate !== state.daily.date
   const unreadWrapup = wrapupMark !== null && readSlot !== wrapupMark
   const index = list.findIndex(view => view.topic.id === currentId)
@@ -332,7 +377,34 @@ export function App() {
             <span className="brand-mark glass">
               <Waves size={16} strokeWidth={2.4} aria-hidden="true" />
             </span>
-            Flux
+            <span className="brand-name">Flux</span>
+            {state.workspaces.length > 1 && (
+              <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
+                {state.workspaces.map(workspace => (
+                  <button
+                    type="button"
+                    key={workspace.id}
+                    title={workspace.label}
+                    aria-current={(switching ?? state.workspace) === workspace.id ? 'page' : undefined}
+                    onClick={() => switchWorkspace(workspace.id)}
+                  >
+                    {workspace.short}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="workspace-manage"
+                  aria-label="Gérer les espaces"
+                  title="Gérer les espaces"
+                  onClick={() => {
+                    setSettingsView('workspaces')
+                    setSettingsOpen(true)
+                  }}
+                >
+                  <Layers size={13} aria-hidden="true" />
+                </button>
+              </nav>
+            )}
           </div>
 
           <nav className="tabs glass lens" aria-label="Vues">
@@ -361,20 +433,30 @@ export function App() {
 
           <div className="topbar-end">
             {meeting && (
-              <span className="chip glass">
+              <span className="chip glass meeting" title={`${meeting.title} ${meeting.when}`}>
                 <CalendarClock size={14} aria-hidden="true" />
-                {meeting}
+                <span className="chip-text">{meeting.title}</span>
+                <span className="chip-when">{meeting.when}</span>
               </span>
             )}
             {offline.length > 0 && (
-              <span className="chip glass warn">
-                Hors ligne : {offline.map(name => SOURCE_LABEL[name]).join(', ')}
+              <span className="chip glass warn compact" title={`Hors ligne : ${offlineLabel}`}>
+                <CloudOff size={14} aria-hidden="true" />
+                <span className="chip-text">Hors ligne</span>
               </span>
             )}
             {toConnect.length > 0 && (
-              <button type="button" className="chip glass" onClick={() => setSettingsOpen(true)}>
+              <button
+                type="button"
+                className="chip glass compact"
+                title={`Connecter ${connectLabel}`}
+                onClick={() => {
+                  setSettingsView('main')
+                  setSettingsOpen(true)
+                }}
+              >
                 <Plug size={14} aria-hidden="true" />
-                Connecter {toConnect.map(name => SOURCE_LABEL[name]).join(', ')}
+                <span className="chip-text">Connecter</span>
               </button>
             )}
             <button
@@ -393,12 +475,11 @@ export function App() {
             aria-busy={refreshing}
             disabled={refreshing}
             title={
-              refreshing ? 'Actualisation…' : `Tout actualiser · synchro de ${clock(state.generatedAt)}`
+              refreshing
+                ? 'Actualisation…'
+                : `Tout actualiser (⌘R) · synchro de ${clock(state.generatedAt)}`
             }
-            onClick={() => {
-              setRefreshing(true)
-              void window.flux.refreshAll().finally(() => setRefreshing(false))
-            }}
+            onClick={refreshAll}
           >
             <RefreshCw size={17} className={refreshing ? 'spin' : undefined} aria-hidden="true" />
           </button>
@@ -412,7 +493,10 @@ export function App() {
               className="round glass"
               aria-label="Réglages"
               title="Réglages"
-              onClick={() => setSettingsOpen(open => !open)}
+              onClick={() => {
+                setSettingsView('main')
+                setSettingsOpen(open => !open)
+              }}
             >
               <Settings size={17} aria-hidden="true" />
             </button>
@@ -436,12 +520,14 @@ export function App() {
               ) : (
                 <section className="hero">
                   <h1 className="hero-empty">{emptyTitle(listTab, state.loose.length)}</h1>
-                  <div className="hero-actions">
-                    <button type="button" className="pill solid" onClick={() => void window.flux.openCapture()}>
-                      Écrire une note
-                      <Plus size={17} aria-hidden="true" />
-                    </button>
-                  </div>
+                  {(listTab === 'queue' || listTab === 'notes') && (
+                    <div className="hero-actions">
+                      <button type="button" className="pill solid" onClick={() => void window.flux.openCapture()}>
+                        Écrire une note
+                        <Plus size={17} aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
                 </section>
               )}
             </main>
@@ -457,11 +543,6 @@ export function App() {
         )}
 
         {searchOpen && <Search state={state} onPick={pick} onClose={() => setSearchOpen(false)} />}
-        {toast && (
-          <p className="toast glass" role="status">
-            {toast}
-          </p>
-        )}
 
         {settingsOpen && (
           <SettingsPanel
@@ -470,8 +551,16 @@ export function App() {
               setSettingsOpen(false)
               setOnboarding(true)
             }}
+            onSaved={() => {
+              setSettingsOpen(false)
+              showToast('Réglages enregistrés')
+            }}
+            onError={message => showToast(message, 'error')}
+            initialView={settingsView}
           />
         )}
+
+        {toast && <Toast key={toast.id} toast={toast} onDone={() => setToast(null)} />}
 
         <svg className="filters" aria-hidden="true">
           <filter id="lens" x="-10%" y="-10%" width="120%" height="120%">

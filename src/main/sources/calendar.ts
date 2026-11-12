@@ -55,11 +55,18 @@ export function meetingsFromIcs(ics: string, now: Date): Meeting[] {
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
-export async function fetchCalendar(url: string): Promise<Meeting[]> {
+// iCloud and Outlook hand out webcal:// links: the same feed over https
+export function calendarUrl(url: string): string {
+  return url.trim().replace(/^webcals?:\/\//i, 'https://')
+}
+
+export async function fetchCalendar(link: string): Promise<Meeting[]> {
+  const url = calendarUrl(link)
   if (!url.startsWith('https://')) throw new Error('Adresse iCal invalide')
   const response = await fetch(url, { signal: AbortSignal.timeout(30_000) })
   if (!response.ok) throw new Error(`Agenda ${response.status}`)
-  const ics = await response.text()
+  // Outlook may start its feed with a byte-order mark
+  const ics = (await response.text()).replace(/^\uFEFF/, '').trimStart()
   if (!ics.startsWith('BEGIN:VCALENDAR')) throw new Error('Adresse iCal invalide')
   return meetingsFromIcs(ics, new Date())
 }

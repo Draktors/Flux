@@ -7,6 +7,7 @@ describe('brandOf', () => {
     expect(brandOf('https://github.com/acme/web/pull/12')).toBe('github')
     expect(brandOf('https://acme.ghe.com/acme/web/pull/12')).toBe('github')
     expect(brandOf('https://linear.app/acme/issue/APP-1')).toBe('linear')
+    expect(brandOf('https://acme.atlassian.net/browse/APP-1')).toBe('jira')
     expect(brandOf('claude://resume?session=abc')).toBe('claude')
     expect(brandOf('obsidian://open?vault=notes')).toBe('obsidian')
     expect(brandOf('https://calendar.google.com/calendar/event?eid=1')).toBe('calendar')

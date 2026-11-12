@@ -7,6 +7,26 @@ import type { StoresConfig } from "./sources/stores";
 
 const HOME = homedir();
 
+// One product you alternate on: its Jira projects and its GitHub repos
+export interface Workspace {
+  id: string;
+  label: string;
+  // Short name shown in the switch (WEB, APP…); defaults to the label
+  short?: string;
+  // Jira project keys whose tickets belong to this workspace
+  jiraProjects: string[];
+  // Linear team keys whose tickets belong to this workspace
+  linearTeams?: string[];
+  github: {
+    // Organisation the repos live in; falls back to github.owner
+    owner?: string;
+    // Repo names (or owner/name); empty means every repo of the owner
+    repos?: string[];
+    // Repos where your PRs merge without a review: an open PR is yours to ship, not waiting on anyone
+    noReview?: string[];
+  };
+}
+
 // Everything specific to one person or one company lives in ~/.flux/config.json, never in the repo
 export interface FluxConfig {
   // Name the triage prompt uses for the person Flux works for
@@ -22,6 +42,12 @@ export interface FluxConfig {
     // Team keys recognised in PR titles and branch names (OFF, WEB…); empty means any UPPER-123 key
     teams: string[];
   };
+  jira: {
+    // Atlassian site, e.g. https://acme.atlassian.net
+    site: string;
+  };
+  // Products you switch between; empty means a single view of everything
+  workspaces: Workspace[];
   paths: {
     // Notes vault holding topics (flux/) and daily notes (daily/)
     vault: string;
@@ -45,6 +71,8 @@ export const DEFAULT_CONFIG: FluxConfig = {
   ownerName: "la personne qui utilise Flux",
   github: { host: "github.com", owner: "", bots: [] },
   linear: { teams: [] },
+  jira: { site: "" },
+  workspaces: [],
   paths: {
     vault: join(HOME, "Documents/Flux"),
     repos: join(HOME, "code"),
@@ -55,7 +83,7 @@ export const DEFAULT_CONFIG: FluxConfig = {
 };
 
 type Overrides = {
-  [Key in keyof FluxConfig]?: FluxConfig[Key] extends string[] | string
+  [Key in keyof FluxConfig]?: FluxConfig[Key] extends unknown[] | string
     ? FluxConfig[Key]
     : Partial<FluxConfig[Key]>;
 };
@@ -71,6 +99,12 @@ export function mergeConfig(overrides: Overrides): FluxConfig {
     ownerName: overrides.ownerName ?? DEFAULT_CONFIG.ownerName,
     github: { ...DEFAULT_CONFIG.github, ...overrides.github },
     linear: { ...DEFAULT_CONFIG.linear, ...overrides.linear },
+    jira: { site: (overrides.jira?.site ?? "").replace(/\/+$/, "") },
+    workspaces: (overrides.workspaces ?? []).map(workspace => ({
+      ...workspace,
+      jiraProjects: (workspace.jiraProjects ?? []).map(key => key.toUpperCase()),
+      github: { ...workspace.github },
+    })),
     paths: {
       vault: expand(paths.vault),
       repos: expand(paths.repos),

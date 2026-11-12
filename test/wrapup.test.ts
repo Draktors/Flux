@@ -143,6 +143,20 @@ describe('liste du wrap-up', () => {
     ])
   })
 
+  it('ne montre que ce qui a été fait dans l’espace affiché', () => {
+    const shop = topic('shop-app#6117')
+    const blog = topic('blog-app#13')
+    const handled = (id: string) => ({ topicId: id, detail: 'Review', rank: 2 as const, stamp: at(9).toISOString(), at: at(10).toISOString() })
+    const journal: WrapupJournal = {
+      ...emptyJournal('2026-11-10'),
+      handled: { 'shop:review': handled(shop.id), 'blog:review': handled(blog.id) },
+    }
+    const wrapup = buildWrapup(
+      input({ journal, topics: [shop, blog], visible: entry => entry.links.some(link => link.startsWith('blog-')) }),
+    )
+    expect(wrapup.done.map(line => line.id)).toEqual(['blog-app#13'])
+  })
+
   it('propose la tête de file sans ce qui vient d’être coché', () => {
     const views = ['a#1', 'b#2', 'c#3', 'd#4'].map((ref, index) =>
       view(topic(ref), [signal(ref, 'feedback', 1, at(8, index))]),

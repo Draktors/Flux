@@ -1,16 +1,17 @@
-import type { MergedPr } from '../../shared/types'
+import type { GithubProfile, MergedPr } from '../../shared/types'
 import { run } from '../exec'
 import { CONFIG } from '../config'
 import { BIN } from '../paths'
 import type { ReviewedPr } from '../engine/daily'
 import { prRef, type PullRequest, type ReviewThread } from '../engine/rank'
 import { dayKey } from '../engine/wrapup'
+import type { GithubScope } from '../workspaces'
 
 export const GITHUB_HOST = CONFIG.github.host
 const HOST = GITHUB_HOST
 const ENDPOINT = `https://api.${HOST}/graphql`
 const OWNER = CONFIG.github.owner
-const SCOPE = OWNER ? ` org:${OWNER}` : ''
+const DEFAULT_SCOPE: GithubScope = { qualifiers: OWNER ? ` org:${OWNER}` : '', owner: OWNER }
 
 const FRAGMENT = `fragment PR on PullRequest {
   number title url state isDraft updatedAt mergedAt closedAt headRefName reviewDecision mergeStateStatus
@@ -133,18 +134,114 @@ export function normalizePullRequest(raw: RawPullRequest, me: string): PullReque
   }
 }
 
-async function graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-  const token = (await run(BIN.gh, ['auth', 'token', '--hostname', HOST])).trim()
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(30_000),
-  })
+// The account flag only picks which stored token gh prints; gh's active account stays as it is
+export function tokenArgs(account: string | null): string[] {
+  return ['auth', 'token', '--hostname', HOST, ...(account ? ['--user', account] : [])]
+}
+
+interface AuthStatus {
+  hosts: Record<string, Array<{ login: string; active: boolean; state: string }>>
+}
+
+export function parseAccounts(json: string, host: string): { logins: string[]; active: string | null } {
+  const entries = ((JSON.parse(json) as AuthStatus).hosts[host] ?? []).filter(
+    entry => entry.state === 'success',
+  )
+  const active = entries.find(entry => entry.active)?.login ?? null
+  const logins = entries
+    .map(entry => entry.login)
+    .sort((a, b) => Number(b === active) - Number(a === active))
+  return { logins, active }
+}
+
+async function graphql<T>(
+  account: string | null,
+  query: string,
+  variables: Record<string, unknown> = {},
+): Promise<T> {
+  const send = async () => {
+    const token = (await run(BIN.gh, tokenArgs(account))).trim()
+    return fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(30_000),
+    })
+  }
+  let response = await send()
+  // A token read while gh refreshes it can be refused once; a fresh read gets the good one
+  if (response.status === 401) response = await send()
   if (!response.ok) throw new Error(`GitHub ${response.status}`)
   const payload = (await response.json()) as { data: T; errors?: Array<{ message: string }> }
   if (payload.errors?.length) throw new Error(payload.errors[0].message)
   return payload.data
+}
+
+async function fetchAvatar(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+    const type = response.headers.get('content-type') ?? ''
+    if (!response.ok || !type.startsWith('image/')) return null
+    const bytes = Buffer.from(await response.arrayBuffer())
+    return `data:${type};base64,${bytes.toString('base64')}`
+  } catch {
+    return null
+  }
+}
+
+// Each account reads its own profile with its own token, so private names show too
+async function fetchProfile(login: string): Promise<GithubProfile> {
+  try {
+    const { viewer } = await graphql<{ viewer: { name: string | null; avatarUrl: string } }>(
+      login,
+      'query { viewer { name avatarUrl(size: 64) } }',
+    )
+    return { name: viewer.name || null, avatar: await fetchAvatar(viewer.avatarUrl) }
+  } catch {
+    return { name: null, avatar: null }
+  }
+}
+
+interface AccountList {
+  logins: string[]
+  active: string | null
+  profiles: Record<string, GithubProfile>
+}
+
+// gh auth status checks every token over the network, so the settings panel reads a cached list
+const ACCOUNTS_TTL_MS = 60_000
+let cachedAccounts: { at: number; value: AccountList } | null = null
+let pendingAccounts: Promise<AccountList> | null = null
+const profiles = new Map<string, GithubProfile>()
+
+async function readAccounts(): Promise<AccountList> {
+  const json = await run(BIN.gh, ['auth', 'status', '--hostname', HOST, '--json', 'hosts'], {
+    timeoutMs: 15_000,
+  })
+  const accounts = parseAccounts(json, HOST)
+  await Promise.all(
+    accounts.logins.map(async login => {
+      const known = profiles.get(login)
+      if (known?.avatar) return
+      profiles.set(login, await fetchProfile(login))
+    }),
+  )
+  const value = {
+    ...accounts,
+    profiles: Object.fromEntries(accounts.logins.map(login => [login, profiles.get(login)!])),
+  }
+  cachedAccounts = { at: Date.now(), value }
+  return value
+}
+
+export function listGithubAccounts(): Promise<AccountList> {
+  if (cachedAccounts && Date.now() - cachedAccounts.at < ACCOUNTS_TTL_MS) {
+    return Promise.resolve(cachedAccounts.value)
+  }
+  pendingAccounts ??= readAccounts().finally(() => {
+    pendingAccounts = null
+  })
+  return pendingAccounts
 }
 
 function parseRef(ref: string): { repo: string; number: number } | null {
@@ -158,7 +255,12 @@ export interface GithubSnapshot {
   merged: MergedPr[]
 }
 
-export async function fetchGithub(extraRefs: string[], mergedSince: string): Promise<GithubSnapshot> {
+export async function fetchGithub(
+  extraRefs: string[],
+  mergedSince: string,
+  account: string | null = null,
+  scope: GithubScope = DEFAULT_SCOPE,
+): Promise<GithubSnapshot> {
   const data = await graphql<{
     viewer: { login: string }
     open: { nodes: RawPullRequest[] }
@@ -172,6 +274,7 @@ export async function fetchGithub(extraRefs: string[], mergedSince: string): Pro
       }>
     }
   }>(
+    account,
     `query($open: String!, $merged: String!) {
       viewer { login }
       open: search(query: $open, type: ISSUE, first: 50) { nodes { ...PR } }
@@ -181,8 +284,8 @@ export async function fetchGithub(extraRefs: string[], mergedSince: string): Pro
     }
     ${FRAGMENT}`,
     {
-      open: `is:pr is:open involves:@me${SCOPE} sort:updated-desc`,
-      merged: `is:pr author:@me${SCOPE} merged:>=${mergedSince}`,
+      open: `is:pr is:open involves:@me${scope.qualifiers} sort:updated-desc`,
+      merged: `is:pr author:@me${scope.qualifiers} merged:>=${mergedSince}`,
     },
   )
 
@@ -195,10 +298,11 @@ export async function fetchGithub(extraRefs: string[], mergedSince: string): Pro
     const selections = missing
       .map(
         ({ repo, number }, index) =>
-          `p${index}: repository(owner: ${JSON.stringify(OWNER || me)}, name: ${JSON.stringify(repo)}) { pullRequest(number: ${number}) { ...PR } }`,
+          `p${index}: repository(owner: ${JSON.stringify(scope.owner || me)}, name: ${JSON.stringify(repo)}) { pullRequest(number: ${number}) { ...PR } }`,
       )
       .join('\n')
     const result = await graphql<Record<string, { pullRequest: RawPullRequest | null }>>(
+      account,
       `query { ${selections} } ${FRAGMENT}`,
     )
     extras = Object.values(result).flatMap(entry => entry.pullRequest ?? [])
@@ -217,7 +321,11 @@ export async function fetchGithub(extraRefs: string[], mergedSince: string): Pro
 }
 
 // PRs of others I reviewed since a date, for a daily Flux kept no journal of
-export async function fetchReviewed(since: Date): Promise<ReviewedPr[]> {
+export async function fetchReviewed(
+  since: Date,
+  account: string | null = null,
+  scope: GithubScope = DEFAULT_SCOPE,
+): Promise<ReviewedPr[]> {
   const data = await graphql<{
     reviewed: {
       nodes: Array<{
@@ -229,16 +337,39 @@ export async function fetchReviewed(since: Date): Promise<ReviewedPr[]> {
       }>
     }
   }>(
+    account,
     `query($reviewed: String!) {
       reviewed: search(query: $reviewed, type: ISSUE, first: 30) {
         nodes { ... on PullRequest { number title url repository { name } viewerLatestReview { submittedAt } } }
       }
     }`,
-    { reviewed: `is:pr reviewed-by:@me -author:@me${SCOPE} updated:>=${dayKey(since)}` },
+    { reviewed: `is:pr reviewed-by:@me -author:@me${scope.qualifiers} updated:>=${dayKey(since)}` },
   )
   return data.reviewed.nodes.flatMap(node => {
     const at = node.viewerLatestReview?.submittedAt
     if (!at || new Date(at) < since) return []
     return [{ ref: prRef(node.repository.name, node.number), title: node.title, url: node.url, reviewedAt: at }]
   })
+}
+
+// Repos you had PRs in over the last months, most active first, for attaching them to a project
+export async function listRecentRepos(account: string | null, now = new Date()): Promise<string[]> {
+  const since = new Date(now.getTime() - 120 * 86_400_000).toISOString().slice(0, 10)
+  const data = await graphql<{
+    search: { nodes: Array<{ repository?: { nameWithOwner: string } }> }
+  }>(
+    account,
+    `query($q: String!) {
+      search(query: $q, type: ISSUE, first: 100) {
+        nodes { ... on PullRequest { repository { nameWithOwner } } }
+      }
+    }`,
+    { q: `is:pr involves:@me updated:>=${since} sort:updated-desc` },
+  )
+  const counts = new Map<string, number>()
+  for (const node of data.search.nodes) {
+    const name = node.repository?.nameWithOwner
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name)
 }

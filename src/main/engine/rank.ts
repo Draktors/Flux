@@ -76,11 +76,15 @@ export interface Ticket {
   labels: string[]
   notices: LinearNotice[]
   asked?: AskedComment
+  // Jira: the status is one you are working in, whatever its name
+  inProgress?: boolean
 }
 
 export interface RankContext {
   me: string
   now: Date
+  // Repo names (as in app#12) where your PRs need no review
+  noReview?: Set<string>
 }
 
 export function ticketKeys(text: string): string[] {
@@ -115,8 +119,14 @@ function isHuman(login: string | null, me: string): login is string {
   return login !== null && login !== me && !BOTS.has(login)
 }
 
+// sam-lee reads « sam »; a head too short for a first name keeps the whole login (Le-Polemil)
+export function shortLogin(login: string): string {
+  const head = login.split('-')[0]
+  return head.length >= 3 ? head : login
+}
+
 function names(logins: string[]): string {
-  return [...new Set(logins)].map(login => login.split('-')[0]).join(', ')
+  return [...new Set(logins.map(shortLogin))].join(', ')
 }
 
 function signal(
@@ -148,7 +158,7 @@ function pendingReviewSignal(pr: PullRequest, ref: string, { now }: RankContext)
   )
 }
 
-function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[] {
+function mineSignals(pr: PullRequest, ref: string, { me, noReview }: RankContext): Signal[] {
   const open = pr.threads.filter(thread => !thread.resolved)
   const human = open.filter(thread => isHuman(thread.lastAuthor, me))
   if (human.length > 0) {
@@ -171,6 +181,17 @@ function mineSignals(pr: PullRequest, ref: string, { me }: RankContext): Signal[
   }
   if (pr.isDraft) return [signal(ref, 'draft', 6, 'Brouillon', 'fix-pr', pr.updatedAt)]
   if (pr.ci === 'FAILURE') return [signal(ref, 'ci', 6, 'CI en échec', 'fix-pr', pr.updatedAt)]
+
+  // Nobody reviews in this repo: once CI is not failing, the PR is yours to merge
+  if (noReview?.has(pr.repo.toLowerCase()) && pr.reviewDecision !== 'APPROVED') {
+    if (pr.mergeStateStatus === 'DIRTY') {
+      return [signal(ref, 'conflict', 6, 'Conflits à résoudre', 'fix-pr', pr.updatedAt)]
+    }
+    if (pr.mergeStateStatus === 'BEHIND') {
+      return [signal(ref, 'behind', 6, 'À rebaser', 'fix-pr', pr.updatedAt)]
+    }
+    return [signal(ref, 'ready', 4, 'Prêt à merger, sans review', 'ship', pr.updatedAt)]
+  }
 
   if (pr.reviewDecision === 'APPROVED' && pr.ci === 'SUCCESS') {
     if (pr.mergeStateStatus === 'CLEAN') {
@@ -296,9 +317,9 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     if (QUESTION_STATES.has(ticket.stateName)) {
       const action = ticket.stateName === 'To frame' ? 'cadrage' : 'question'
       signals.push(signal(ref, 'state-question', 3, ticket.stateName, action, ticket.updatedAt))
-    } else if (ticket.stateName === 'Ready to deploy') {
+    } else if (/^ready to (deploy|mep)$/i.test(ticket.stateName)) {
       signals.push(signal(ref, 'state-ready', 4, 'Prêt à déployer', 'ship', ticket.updatedAt))
-    } else if (OWN_STATES.has(ticket.stateName)) {
+    } else if (OWN_STATES.has(ticket.stateName) || ticket.inProgress) {
       const action = ticket.labels.some(label => BUG_LABELS.test(label)) ? 'diagnostic' : 'ticket'
       signals.push(signal(ref, 'state-own', 6, ticket.stateName, action, ticket.updatedAt))
     }

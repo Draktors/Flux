@@ -51,3 +51,18 @@ describe('agenda', () => {
     expect(later.map(meeting => meeting.title)).not.toContain('En cours')
   })
 })
+
+describe('agenda Outlook / Teams', () => {
+  const outlook = readFileSync(join(__dirname, 'fixtures/outlook.ics'), 'utf8')
+  const meetings = meetingsFromIcs(outlook, NOW)
+
+  it('lit les fuseaux Windows publiés par Outlook', () => {
+    expect(meetings.find(meeting => meeting.title === 'Daily Boutique')?.start).toBe(
+      '2026-11-06T08:30:00.000Z',
+    )
+  })
+
+  it('ignore les créneaux marqués disponibles', () => {
+    expect(meetings.map(meeting => meeting.title)).not.toContain('Bloc libre')
+  })
+})

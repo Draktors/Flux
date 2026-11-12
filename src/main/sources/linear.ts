@@ -267,3 +267,20 @@ export async function fetchCompleted(apiKey: string, since: string): Promise<Com
       : [],
   )
 }
+
+// Teams you belong to, for picking the ones you work on
+export async function listLinearTeams(apiKey: string): Promise<Array<{ key: string; name: string }>> {
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: 'query { teams(first: 100) { nodes { key name } } }' }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) throw new Error(`Linear ${response.status}`)
+  const payload = (await response.json()) as {
+    data?: { teams: { nodes: Array<{ key: string; name: string }> } }
+    errors?: Array<{ message: string }>
+  }
+  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
+  return payload.data.teams.nodes
+}

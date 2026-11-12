@@ -164,6 +164,8 @@ export interface WrapupInput {
   merged: MergedPr[]
   times: string[]
   now: Date
+  // Whether a topic belongs to the workspace on screen; the journal holds every workspace's day
+  visible?: (topic: Topic) => boolean
 }
 
 // What was done over a window, read from the wrap-up journals, the topics and the merged PRs
@@ -246,8 +248,9 @@ export function collectDone({ handled, ticked, topics, views, merged, within }: 
   return records.sort((a, b) => a.at.localeCompare(b.at))
 }
 
-function doneLines({ journal, topics, views, merged, now }: WrapupInput): WrapupDone[] {
+function doneLines({ journal, topics, views, merged, now, visible }: WrapupInput): WrapupDone[] {
   const today = dayKey(now)
+  const shown = visible ?? (() => true)
   return collectDone({
     handled: Object.values(journal.handled),
     ticked: journal.ticked,
@@ -255,7 +258,12 @@ function doneLines({ journal, topics, views, merged, now }: WrapupInput): Wrapup
     views,
     merged,
     within: iso => dayKey(new Date(iso)) === today,
-  }).map(({ askRank: _rank, links: _links, ...line }) => line)
+  })
+    .filter(record => {
+      const topic = record.topicId ? topics.find(entry => entry.id === record.topicId) : undefined
+      return !topic || shown(topic)
+    })
+    .map(({ askRank: _rank, links: _links, ...line }) => line)
 }
 
 // Ticked in the wrap-up, and nothing new came in since

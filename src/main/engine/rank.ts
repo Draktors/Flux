@@ -119,8 +119,14 @@ function isHuman(login: string | null, me: string): login is string {
   return login !== null && login !== me && !BOTS.has(login)
 }
 
+// sam-lee reads « sam »; a head too short for a first name keeps the whole login (Le-Polemil)
+export function shortLogin(login: string): string {
+  const head = login.split('-')[0]
+  return head.length >= 3 ? head : login
+}
+
 function names(logins: string[]): string {
-  return [...new Set(logins)].map(login => login.split('-')[0]).join(', ')
+  return [...new Set(logins.map(shortLogin))].join(', ')
 }
 
 function signal(

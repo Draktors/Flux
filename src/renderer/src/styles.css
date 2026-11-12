@@ -930,14 +930,18 @@ button.chip:hover {
 }
 
 .card-head strong {
+  min-width: 0;
   overflow: hidden;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* Never squeezed: a long ref takes the ellipsis, the age stays on its line */
 .age {
+  flex: none;
   margin-left: auto;
+  white-space: nowrap;
   color: var(--text-2);
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;

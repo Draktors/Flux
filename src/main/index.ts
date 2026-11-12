@@ -373,6 +373,8 @@ function registerIpc(): void {
   ipcMain.handle('flux:connect-granola', () => calls.connect(url => void shell.openExternal(url)))
   ipcMain.handle('flux:disconnect-granola', () => calls.disconnect())
   ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))
+  // macOS knows whether some app opens obsidian:// links, Obsidian or not
+  ipcMain.handle('flux:has-obsidian', () => app.getApplicationNameForProtocol('obsidian://') !== '')
   ipcMain.handle('flux:open-daily', () => {
     const path = join(DAILY_DIR, `${localDate(new Date())}.md`)
     if (!existsSync(path)) return undefined

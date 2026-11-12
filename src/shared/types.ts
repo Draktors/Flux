@@ -434,6 +434,7 @@ export interface FluxApi {
   checkCalendarUrl(url: string): Promise<CheckResult>
   runDaily(): Promise<void>
   openDaily(): Promise<void>
+  hasObsidian(): Promise<boolean>
   // Today's intentions, in order; the wrap-up puts them first in its focus
   setIntentions(ids: string[]): Promise<void>
   // Writes the generic daily skill where the config expects it, never over an existing file

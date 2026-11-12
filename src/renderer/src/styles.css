@@ -324,15 +324,16 @@ button.chip:hover {
     background-color 0.16s var(--ease);
 }
 
-.pill:hover:not(:disabled) {
+.pill:hover:not(:disabled, [aria-disabled='true']) {
   transform: translateY(-1px);
 }
 
-.pill:active:not(:disabled) {
+.pill:active:not(:disabled, [aria-disabled='true']) {
   transform: scale(0.97);
 }
 
-.pill:disabled {
+.pill:disabled,
+.pill[aria-disabled='true'] {
   opacity: 0.5;
   cursor: default;
 }

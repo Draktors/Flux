@@ -71,6 +71,7 @@ const api: FluxApi = {
   checkCalendarUrl: url => ipcRenderer.invoke('flux:check-calendar-url', url),
   runDaily: () => ipcRenderer.invoke('flux:run-daily'),
   openDaily: () => ipcRenderer.invoke('flux:open-daily'),
+  hasObsidian: () => ipcRenderer.invoke('flux:has-obsidian'),
   setIntentions: ids => ipcRenderer.invoke('flux:set-intentions', ids),
   useDailyTemplate: () => ipcRenderer.invoke('flux:use-daily-template'),
   createDailySkill: () => ipcRenderer.invoke('flux:create-daily-skill'),

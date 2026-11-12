@@ -471,6 +471,11 @@ function subtitle(sheet: DailySheet): string {
 
 export function DailyView({ daily, onOpen, onNote }: { daily: DailySheet } & LineActions) {
   const actions = { onOpen, onNote }
+  // Unknown until macOS answers: the button stays usable meanwhile
+  const [hasObsidian, setHasObsidian] = useState<boolean | null>(null)
+  useEffect(() => {
+    void window.flux.hasObsidian().then(setHasObsidian, () => setHasObsidian(null))
+  }, [])
   return (
     <main className="page">
       <div className="page-column daily">
@@ -492,7 +497,20 @@ export function DailyView({ daily, onOpen, onNote }: { daily: DailySheet } & Lin
               </button>
             )}
             {daily.notePath && (
-              <button type="button" className="pill glass small" onClick={() => void window.flux.openDaily()}>
+              <button
+                type="button"
+                className="pill glass small"
+                // aria-disabled rather than disabled: the tooltip must still show on hover
+                aria-disabled={hasObsidian === false}
+                title={
+                  hasObsidian === false
+                    ? 'Obsidian n’est pas installé sur ce Mac : installe-le pour ouvrir la note du jour, Flux l’écrit déjà dans ton coffre.'
+                    : 'Ouvrir la note du jour dans Obsidian'
+                }
+                onClick={() => {
+                  if (hasObsidian !== false) void window.flux.openDaily()
+                }}
+              >
                 <BrandIcon brand="obsidian" size={14} />
                 Obsidian
               </button>

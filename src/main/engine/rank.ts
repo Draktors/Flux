@@ -235,6 +235,7 @@ export function itemFromPullRequest(pr: PullRequest, ctx: RankContext): Item {
     title: pr.title,
     url: pr.url,
     branch: pr.headRefName,
+    mine: pr.author === ctx.me,
   }
   if (pr.state !== 'OPEN') return { ...base, terminal: true, ball: 'others', signals: [] }
 
@@ -244,10 +245,9 @@ export function itemFromPullRequest(pr: PullRequest, ctx: RankContext): Item {
 
   const blocked = BLOCKED_TITLE.test(pr.title)
   const stale = ageDays(pr.updatedAt, ctx.now) > DORMANT_DAYS
-  const mine = pr.author === ctx.me
   if (!blocked) {
-    if (mine && !stale) signals.push(...mineSignals(pr, ref, ctx))
-    if (!mine) signals.push(...theirSignals(pr, ref, ctx))
+    if (base.mine && !stale) signals.push(...mineSignals(pr, ref, ctx))
+    if (!base.mine) signals.push(...theirSignals(pr, ref, ctx))
   }
 
   const ball = signals.length > 0 ? 'me' : blocked || stale ? 'dormant' : 'others'
@@ -261,7 +261,14 @@ const BUG_LABELS = /sentry|bug/i
 
 export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
   const ref = ticket.key
-  const base = { ref, refs: [ref], kind: 'ticket' as const, title: ticket.title, url: ticket.url }
+  const base = {
+    ref,
+    refs: [ref],
+    kind: 'ticket' as const,
+    title: ticket.title,
+    url: ticket.url,
+    mine: ticket.assignedToMe,
+  }
   if (CLOSED_STATE_TYPES.has(ticket.stateType)) {
     return { ...base, terminal: true, ball: 'others', signals: [] }
   }

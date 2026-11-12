@@ -368,6 +368,33 @@ describe('rapprochement sujets / signaux', () => {
     expect(result.views[0].items).toHaveLength(2)
   })
 
+  it('sépare mon travail de celui des autres auquel je participe', () => {
+    const theirs = itemFromPullRequest(pr({ number: 2, author: 'sam-lee', headRefName: 'feature/app-9' }), context)
+    const assigned = ticketItem()
+    const other = itemFromTicket(ticket({ key: 'APP-2', assignedToMe: false }), context)
+    expect([itemFromPullRequest(pr({}), context).mine, theirs.mine, assigned.mine, other.mine]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+    const result = reconcile(
+      [
+        topic({ id: 'review', links: ['mobile#2'] }),
+        topic({ id: 'mixte', links: ['mobile#2', 'APP-1'] }),
+        topic({ id: 'note' }),
+      ],
+      [theirs, assigned],
+      [],
+      NOW,
+    )
+    expect(result.views.map(view => [view.topic.id, view.mine])).toEqual([
+      ['review', false],
+      ['mixte', true],
+      ['note', true],
+    ])
+  })
+
   it('ne crée pas de sujet pour ce qui attend les autres', () => {
     const item = itemFromPullRequest(pr({ author: 'sam-lee' }), context)
     expect(reconcile([], [item], [], NOW).created).toEqual([])
@@ -472,6 +499,7 @@ const view = (id: string, signalId: string, stamp: string, rank: 1 | 4 = 1): Top
   threads: [],
   rank,
   ball: 'me',
+  mine: true,
   since: stamp,
   actions: [],
 })

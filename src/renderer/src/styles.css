@@ -778,6 +778,14 @@ button.chip:hover {
   color: var(--tint-light, currentColor);
 }
 
+.rail-divider {
+  flex: none;
+  align-self: stretch;
+  width: 1px;
+  margin: 0 8px;
+  background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.4) 25%, rgba(255, 255, 255, 0.4) 85%, transparent);
+}
+
 .rail-cards {
   display: flex;
   gap: 10px;

@@ -37,6 +37,8 @@ export interface Item {
   branch?: string
   terminal: boolean
   ball: 'me' | 'others' | 'dormant'
+  // My PR or a ticket assigned to me, as opposed to someone else's I take part in
+  mine: boolean
   signals: Signal[]
 }
 
@@ -85,6 +87,8 @@ export interface TopicView {
   threads: ThreadView[]
   rank: Rank | null
   ball: Ball
+  // My own work: one of its items is mine, or a note with nothing linked
+  mine: boolean
   since: string | null
   actions: ProposedAction[]
 }

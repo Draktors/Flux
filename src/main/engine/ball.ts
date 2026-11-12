@@ -116,6 +116,7 @@ function viewOf(topic: Topic, items: Item[], sessions: LiveSession[]): TopicView
     threads,
     rank,
     ball,
+    mine: items.length === 0 || items.some(item => item.mine),
     since: lead ? lead.since : null,
     actions: proposedActions(topic, items, signals),
   }

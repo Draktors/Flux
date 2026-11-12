@@ -41,6 +41,7 @@ function view(subject: Topic, signals: Signal[], ball: TopicView['ball'] = 'me')
     threads: [],
     rank: signals[0]?.rank ?? null,
     ball: signals.length > 0 ? ball : 'others',
+    mine: true,
     since: signals[0]?.since ?? null,
     actions: [],
   }

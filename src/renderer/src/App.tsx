@@ -8,7 +8,7 @@ import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
 import { Inspector } from './Inspector'
 import { Onboarding } from './Onboarding'
-import { looseId, Rail } from './Rail'
+import { looseId, ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { SettingsPanel } from './SettingsPanel'
 import { Stage } from './Stage'
@@ -40,9 +40,10 @@ function isSheet(tab: Tab): tab is SheetTab {
   return tab === 'wrapup' || tab === 'daily'
 }
 
-// Dormant topics close the waiting list: the wrap-up took their tab
+// Waiting puts my own work before the work of others; dormant topics close each half
 function listOf(state: AppState, tab: ListTab): TopicView[] {
-  return tab === 'waiting' ? [...state.waiting, ...state.dormant] : state[tab]
+  if (tab !== 'waiting') return state[tab]
+  return ownerGroups([...state.waiting, ...state.dormant], []).flatMap(group => group.views)
 }
 
 function tabFor(state: AppState, id: string): ListTab | null {
@@ -183,10 +184,13 @@ export function App() {
   const style = useMemo(() => rankStyle(focusRank), [focusRank])
   // Arrow keys walk the rail in order, loose items included
   const order = useMemo(
-    () => [
-      ...list.map(view => view.topic.id),
-      ...(tab === 'waiting' ? (state?.loose ?? []).map(looseId) : []),
-    ],
+    () =>
+      tab === 'waiting'
+        ? ownerGroups(list, state?.loose ?? []).flatMap(group => [
+            ...group.views.map(view => view.topic.id),
+            ...group.loose.map(looseId),
+          ])
+        : list.map(view => view.topic.id),
     [list, tab, state?.loose],
   )
 
@@ -395,7 +399,7 @@ export function App() {
             <Rail
               views={list}
               loose={tab === 'waiting' ? state.loose : undefined}
-              grouped={tab === 'queue'}
+              grouping={tab === 'queue' ? 'rank' : tab === 'waiting' ? 'owner' : 'none'}
               selected={currentId}
               isFresh={isFresh}
               onSelect={setSelected}

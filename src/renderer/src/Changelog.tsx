@@ -4,6 +4,7 @@ import { SCENES, Spot } from './Spot'
 
 // Newest first, one line each: the id of the first entry marks what was read
 const ENTRIES: Array<{ id: string; date: string; text: string; scene?: string }> = [
+  { id: '2026-11-10-owner', date: '10 nov.', text: 'Attente coupée entre mon travail et mes contributions' },
   { id: '2026-11-10-stores', date: '10 nov.', text: 'Erreurs app et avis des stores dans le Daily' },
   { id: '2026-11-10-daily', date: '10 nov.', text: 'Daily refait, en blocs courts', scene: 'daily' },
   { id: '2026-11-10-intentions', date: '10 nov.', text: 'Intentions du jour réordonnables', scene: 'daily' },

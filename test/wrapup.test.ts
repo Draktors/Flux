@@ -44,6 +44,7 @@ function view(subject: Topic, signals: Signal[]): TopicView {
     threads: [],
     rank: signals[0]?.rank ?? null,
     ball: signals.length > 0 ? 'me' : 'others',
+    mine: true,
     since: signals[0]?.since ?? null,
     actions: [],
   }

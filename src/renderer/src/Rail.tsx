@@ -6,6 +6,9 @@ import { LinkIcon } from './Brand'
 import { displayTitle, waitingFor } from './format'
 import { rankStyle, tint } from './rankStyle'
 
+// « Mes sujets »
+const MINE: Rank = 6
+
 interface CardProps {
   view: TopicView
   selected: boolean
@@ -81,7 +84,49 @@ function LooseCard({ item, selected, onSelect }: LooseCardProps) {
   )
 }
 
-function Group({ label, rank, children }: { label?: string; rank?: Rank; children: ReactNode }) {
+export interface SprintScope {
+  only: boolean
+  // Cards the sprint filter takes out, for the switch's tooltip
+  hidden: number
+  onChange(only: boolean): void
+}
+
+function SprintSwitch({ scope }: { scope: SprintScope }) {
+  return (
+    <span className="scope-switch" role="group" aria-label="Tickets montrés">
+      {[
+        { only: true, label: 'Sprint', title: 'Seulement les tickets du sprint en cours' },
+        {
+          only: false,
+          label: 'Tout',
+          title: scope.only && scope.hidden > 0 ? `Aussi ${scope.hidden} hors sprint` : 'Tous tes tickets assignés',
+        },
+      ].map(option => (
+        <button
+          key={option.label}
+          type="button"
+          aria-pressed={scope.only === option.only}
+          title={option.title}
+          onClick={() => scope.onChange(option.only)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </span>
+  )
+}
+
+function Group({
+  label,
+  rank,
+  extra,
+  children,
+}: {
+  label?: string
+  rank?: Rank
+  extra?: ReactNode
+  children: ReactNode
+}) {
   const style = rank === undefined ? null : rankStyle(rank)
   const Icon = style?.icon
   return (
@@ -90,6 +135,7 @@ function Group({ label, rank, children }: { label?: string; rank?: Rank; childre
         <h2 style={style ? tint(style) : undefined}>
           {Icon && <Icon size={13} strokeWidth={2.4} aria-hidden="true" />}
           {label}
+          {extra}
         </h2>
       )}
       <div className="rail-cards">{children}</div>
@@ -101,12 +147,14 @@ interface RailProps {
   views: TopicView[]
   loose?: Item[]
   grouped: boolean
+  // The Sprint / Tout switch beside « Mes sujets », once Jira tells which tickets are in it
+  sprint?: SprintScope
   selected: string | null
   isFresh(view: TopicView): boolean
   onSelect(id: string): void
 }
 
-export function Rail({ views, loose = [], grouped, selected, isFresh, onSelect }: RailProps) {
+export function Rail({ views, loose = [], grouped, sprint, selected, isFresh, onSelect }: RailProps) {
   const track = useRef<HTMLDivElement>(null)
   const card = (view: TopicView) => (
     <Card
@@ -117,9 +165,10 @@ export function Rail({ views, loose = [], grouped, selected, isFresh, onSelect }
       onSelect={onSelect}
     />
   )
-  const ranks = [...new Set(views.map(view => view.rank))].filter(
-    (rank): rank is Rank => rank !== null,
-  )
+  const shown = [...new Set(views.map(view => view.rank))].filter((rank): rank is Rank => rank !== null)
+  // A sprint with nothing of yours left keeps its header, so « Tout » stays at hand
+  const ranks =
+    sprint && sprint.hidden > 0 && !shown.includes(MINE) ? [...shown, MINE].sort((a, b) => a - b) : shown
 
   return (
     <nav className="rail" aria-label="Sujets dans l'ordre du flux">
@@ -134,8 +183,16 @@ export function Rail({ views, loose = [], grouped, selected, isFresh, onSelect }
       >
         {grouped ? (
           ranks.map(rank => (
-            <Group key={rank} label={RANKS[rank].label} rank={rank}>
+            <Group
+              key={rank}
+              label={RANKS[rank].label}
+              rank={rank}
+              extra={rank === MINE && sprint ? <SprintSwitch scope={sprint} /> : undefined}
+            >
               {views.filter(view => view.rank === rank).map(card)}
+              {rank === MINE && sprint && !views.some(view => view.rank === MINE) && (
+                <p className="rail-empty">Rien d’autre pour toi dans le sprint.</p>
+              )}
             </Group>
           ))
         ) : (

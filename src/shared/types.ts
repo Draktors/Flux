@@ -39,6 +39,8 @@ export interface Item {
   title: string
   url: string
   branch?: string
+  // Ticket in a running sprint; unknown where its project runs none
+  inSprint?: boolean
   terminal: boolean
   ball: 'me' | 'others' | 'dormant'
   signals: Signal[]

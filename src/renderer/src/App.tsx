@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import type { CallsState } from '../../shared/calls'
+import { knowsSprint, outsideSprint } from '../../shared/sprint'
 import { Boot, type BootProgress } from './Boot'
 import { CallsView } from './CallsView'
 import { Changelog } from './Changelog'
@@ -34,6 +35,7 @@ type Tab = ListTab | SheetTab
 
 const DAILY_READ_KEY = 'flux.dailyRead'
 const WRAPUP_READ_KEY = 'flux.wrapupRead'
+const SPRINT_KEY = 'flux.sprintScope'
 // The loading scene plays at least this long, then dissolves into the app
 const BOOT_MIN_MS = 1800
 const BOOT_EXIT_MS = 900
@@ -109,6 +111,8 @@ export function App() {
   const [progress, setProgress] = useState<BootProgress>({})
   const [boot, setBoot] = useState<'playing' | 'leaving' | 'done'>('playing')
   const [refreshing, setRefreshing] = useState(false)
+  // « Mes sujets » keeps only the running sprint's tickets unless you ask for all of them
+  const [sprintOnly, setSprintOnly] = useState(() => readMark(SPRINT_KEY) !== 'all')
   const bootStart = useRef(performance.now())
 
   // Refetches every source, calendar and calls included; the button and ⌘R share it
@@ -224,7 +228,11 @@ export function App() {
   const views = useMemo(() => (state ? allViews(state) : []), [state])
   const sheet = isSheet(tab)
   const listTab: ListTab = isSheet(tab) ? 'queue' : tab
-  const list = useMemo(() => (state ? listOf(state, listTab) : []), [state, listTab])
+  const sprintKnown = useMemo(() => (state ? knowsSprint(state.queue) : false), [state])
+  const sprintFilter = sprintOnly && sprintKnown
+  const inView = (views: TopicView[]) => (sprintFilter ? views.filter(view => !outsideSprint(view)) : views)
+  const fullList = useMemo(() => (state ? listOf(state, listTab) : []), [state, listTab])
+  const list = useMemo(() => inView(fullList), [fullList, sprintFilter])
   const current =
     (!sheet && list.find(view => view.topic.id === selected)) ||
     (!sheet ? views.find(view => view.topic.id === selected) : undefined) ||
@@ -293,7 +301,7 @@ export function App() {
   }
 
   const tabs: Array<{ key: Tab; label: string; count: number }> = [
-    { key: 'queue', label: 'File', count: state.queue.length },
+    { key: 'queue', label: 'File', count: inView(state.queue).length },
     { key: 'active', label: 'En cours', count: state.active.length },
     {
       key: 'waiting',
@@ -500,6 +508,18 @@ export function App() {
               views={list}
               loose={tab === 'waiting' ? state.loose : undefined}
               grouped={tab === 'queue'}
+              sprint={
+                tab === 'queue' && sprintKnown
+                  ? {
+                      only: sprintOnly,
+                      hidden: fullList.length - list.length,
+                      onChange: only => {
+                        setSprintOnly(only)
+                        saveMark(SPRINT_KEY, only ? 'sprint' : 'all')
+                      },
+                    }
+                  : undefined
+              }
               selected={currentId}
               isFresh={isFresh}
               onSelect={setSelected}

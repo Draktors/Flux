@@ -89,19 +89,57 @@ async function myAccountId(credentials: JiraCredentials): Promise<string> {
   return accountId
 }
 
-async function search(credentials: JiraCredentials, jql: string): Promise<RawJiraIssue[]> {
+async function search(
+  credentials: JiraCredentials,
+  jql: string,
+  fields: string[] = FIELDS,
+  limit = PAGE_SIZE * 3,
+): Promise<RawJiraIssue[]> {
   const issues: RawJiraIssue[] = []
   let nextPageToken: string | undefined
   do {
     const page = await call<{ issues: RawJiraIssue[]; nextPageToken?: string }>(
       credentials,
       '/rest/api/3/search/jql',
-      { jql, fields: FIELDS, maxResults: PAGE_SIZE, nextPageToken },
+      { jql, fields, maxResults: Math.min(PAGE_SIZE, limit), nextPageToken },
     )
     issues.push(...page.issues)
     nextPageToken = page.nextPageToken
-  } while (nextPageToken && issues.length < PAGE_SIZE * 3)
+  } while (nextPageToken && issues.length < limit)
   return issues
+}
+
+export const projectOf = (key: string) => key.split('-')[0]
+
+// The keys among yours that sit in a running sprint, and the projects that run one at all:
+// a Kanban project has no sprint, so its tickets stay unknown rather than "outside"
+export function markSprint(tickets: Ticket[], running: Set<string>, inSprint: Set<string>): Ticket[] {
+  return tickets.map(ticket =>
+    running.has(projectOf(ticket.key)) ? { ...ticket, inSprint: inSprint.has(ticket.key) } : ticket,
+  )
+}
+
+async function withSprint(credentials: JiraCredentials, tickets: Ticket[]): Promise<Ticket[]> {
+  const open = tickets.filter(ticket => ticket.stateType !== 'completed')
+  const projects = [...new Set(open.map(ticket => projectOf(ticket.key)))]
+  if (projects.length === 0) return tickets
+  try {
+    const running = new Set<string>()
+    await Promise.all(
+      projects.map(async project => {
+        const any = await search(credentials, `project = ${JSON.stringify(project)} AND sprint in openSprints()`, ['key'], 1)
+        if (any.length > 0) running.add(project)
+      }),
+    )
+    const keys = open.filter(ticket => running.has(projectOf(ticket.key))).map(ticket => ticket.key)
+    if (keys.length === 0) return tickets
+    const inSprint = await search(credentials, `key in (${keys.join(', ')}) AND sprint in openSprints()`, ['key'])
+    return markSprint(tickets, running, new Set(inSprint.map(issue => issue.key)))
+  } catch (error) {
+    // Without the sprint, every ticket stays shown
+    console.error('Sprint Jira indisponible', error)
+    return tickets
+  }
 }
 
 export async function fetchJira(
@@ -118,7 +156,10 @@ export async function fetchJira(
     if (linked.length === 0) throw error
     issues = await search(credentials, jiraQuery(projects, []))
   }
-  return issues.map(issue => ticketFromJiraIssue(issue, credentials.site, me))
+  return withSprint(
+    credentials,
+    issues.map(issue => ticketFromJiraIssue(issue, credentials.site, me)),
+  )
 }
 
 export async function checkJira(credentials: JiraCredentials): Promise<string> {

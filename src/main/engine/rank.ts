@@ -67,6 +67,8 @@ export interface Ticket {
   notices: LinearNotice[]
   // Jira: the status is one you are working in, whatever its name
   inProgress?: boolean
+  // Jira: in a running sprint or not; left out where the project runs no sprint
+  inSprint?: boolean
 }
 
 export interface RankContext {
@@ -276,7 +278,14 @@ const BUG_LABELS = /sentry|bug/i
 
 export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
   const ref = ticket.key
-  const base = { ref, refs: [ref], kind: 'ticket' as const, title: ticket.title, url: ticket.url }
+  const base = {
+    ref,
+    refs: [ref],
+    kind: 'ticket' as const,
+    title: ticket.title,
+    url: ticket.url,
+    ...(ticket.inSprint === undefined ? {} : { inSprint: ticket.inSprint }),
+  }
   if (CLOSED_STATE_TYPES.has(ticket.stateType)) {
     return { ...base, terminal: true, ball: 'others', signals: [] }
   }

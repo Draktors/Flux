@@ -5246,3 +5246,47 @@ li.chosen .project-check {
   opacity: 1;
   transform: none;
 }
+
+/* Sprint / Tout beside « Mes sujets » */
+.scope-switch {
+  display: inline-flex;
+  margin-left: 6px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16);
+}
+
+.scope-switch button {
+  padding: 1px 9px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.scope-switch button:hover {
+  color: var(--text);
+}
+
+.scope-switch button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+
+.rail-empty {
+  display: flex;
+  align-items: center;
+  height: 92px;
+  margin: 0;
+  padding: 0 14px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}

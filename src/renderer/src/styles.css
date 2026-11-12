@@ -5206,3 +5206,38 @@ li.chosen .project-check {
 .settings small.shortcut-error {
   color: var(--danger);
 }
+
+/* Tooltips: Flux's own, for every title in the window */
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  max-width: 260px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  background: rgba(20, 22, 34, 0.94);
+  backdrop-filter: blur(20px) saturate(170%);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.18),
+    0 6px 20px rgba(0, 0, 0, 0.36);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition:
+    opacity 0.12s var(--ease),
+    transform 0.12s var(--ease);
+}
+
+.tooltip.above {
+  transform: translateY(3px);
+}
+
+.tooltip.shown {
+  opacity: 1;
+  transform: none;
+}

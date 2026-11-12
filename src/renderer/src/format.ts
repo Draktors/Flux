@@ -20,12 +20,19 @@ export function until(iso: string, now = Date.now()): string {
   return `à ${clock(iso)}`
 }
 
-export function displayTitle(title: string): string {
+// The ref, ticket tags and commit type a title carries, apart from what it says:
+// renaming edits the text and keeps the prefix, which ties the topic to its source
+export function splitTitle(title: string): { prefix: string; text: string } {
   const plain = title
     .replace(/^(?:[a-z0-9_-]+#\d+|[A-Z]{2,5}-\d+) — /, '')
     .replace(/^(?:\[[^\]]+\]\s*)+/, '')
     .replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/, '')
-  return plain ? `${plain.charAt(0).toUpperCase()}${plain.slice(1)}` : title
+  if (!plain) return { prefix: '', text: title }
+  return { prefix: title.slice(0, title.length - plain.length), text: `${plain.charAt(0).toUpperCase()}${plain.slice(1)}` }
+}
+
+export function displayTitle(title: string): string {
+  return splitTitle(title).text
 }
 
 export { markedBlocked } from '../../shared/titles'

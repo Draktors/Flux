@@ -400,7 +400,6 @@ button.chip:hover {
   transition: opacity 0.16s var(--ease);
 }
 
-.hero-title:hover .ghost,
 .ghost:focus-visible {
   opacity: 1;
 }
@@ -480,7 +479,13 @@ button.chip:hover {
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
-  user-select: text;
+  cursor: text;
+  border-radius: 10px;
+  outline: none;
+}
+
+.hero-title h1:focus-visible {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.42);
 }
 
 .hero-title textarea {

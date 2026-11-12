@@ -1,9 +1,9 @@
-import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, Pencil } from 'lucide-react'
+import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { RANKS } from '../../shared/ranks'
 import type { Item, ProposedAction, TopicView } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
-import { displayTitle, markedBlocked, waitingFor } from './format'
+import { displayTitle, markedBlocked, splitTitle, waitingFor } from './format'
 import { rankStyle } from './rankStyle'
 import { useDraft } from './useDraft'
 
@@ -20,9 +20,11 @@ export function Hero({ view, position }: HeroProps) {
   const [blocking, setBlocking] = useState(false)
   const [editing, setEditing] = useState(false)
   const [reason, setReason] = useState('')
-  const [title, setTitle] = useDraft(topic.title, next =>
-    void window.flux.updateTopic(topic.id, { title: next }),
-  )
+  // Only the words are edited: the ref and tags in front stay as they are
+  const { prefix, text } = splitTitle(topic.title)
+  const [title, setTitle] = useDraft(text, next => {
+    if (next.trim()) void window.flux.updateTopic(topic.id, { title: `${prefix}${next.trim()}` })
+  })
   const style = rankStyle(view.rank)
   const Icon = style.icon
 
@@ -64,22 +66,34 @@ export function Hero({ view, position }: HeroProps) {
             aria-label="Titre du sujet"
             rows={1}
             value={title}
+            // Caret at the end, where a rename usually starts
+            onFocus={event => event.target.setSelectionRange(event.target.value.length, event.target.value.length)}
             onChange={event => setTitle(event.target.value.replace(/\n/g, ' '))}
-            onBlur={() => setEditing(false)}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === 'Escape') {
+                event.preventDefault()
+                event.currentTarget.blur()
+              }
+            }}
+            onBlur={() => {
+              // An emptied title is not saved: it comes back as it was
+              if (!title.trim()) setTitle(text)
+              setEditing(false)
+            }}
           />
         ) : (
-          <h1>{displayTitle(title)}</h1>
-        )}
-        {!editing && (
-          <button
-            type="button"
-            className="ghost"
-            aria-label="Renommer le sujet"
-            title="Renommer"
+          // The title itself is the rename button
+          <h1
+            role="button"
+            tabIndex={0}
+            aria-label={`${title}, renommer le sujet`}
             onClick={() => setEditing(true)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') setEditing(true)
+            }}
           >
-            <Pencil size={15} aria-hidden="true" />
-          </button>
+            {title}
+          </h1>
         )}
       </div>
 

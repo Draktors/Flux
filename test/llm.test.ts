@@ -3,7 +3,7 @@ import { isMaxSession } from '../src/main/llm/claude'
 import { dailyFrom, isDailyDue, localDate, type DailyIds } from '../src/main/llm/daily'
 import { applyVerdicts, parseVerdicts } from '../src/main/llm/triage'
 import type { Ticket } from '../src/main/engine/rank'
-import { displayTitle } from '../src/renderer/src/format'
+import { displayTitle, splitTitle } from '../src/renderer/src/format'
 
 describe('session Claude', () => {
   const max = {
@@ -134,5 +134,19 @@ describe('titres affichés', () => {
     ['Une note: avec deux points', 'Une note: avec deux points'],
   ])('%s', (raw, expected) => {
     expect(displayTitle(raw)).toBe(expected)
+  })
+})
+
+describe('renommer un sujet', () => {
+  it('garde la ref et le type devant le texte édité', () => {
+    expect(splitTitle('panneau-pocket#6260 — feat(quote): open the upgrade')).toEqual({
+      prefix: 'panneau-pocket#6260 — feat(quote): ',
+      text: 'Open the upgrade',
+    })
+    expect(splitTitle('family#221 — [BLOCKED][ACC-5367] Déconnecter').prefix).toBe('family#221 — [BLOCKED][ACC-5367] ')
+  })
+
+  it('laisse une note libre entière', () => {
+    expect(splitTitle('Une note: avec deux points')).toEqual({ prefix: '', text: 'Une note: avec deux points' })
   })
 })

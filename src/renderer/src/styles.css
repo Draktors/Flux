@@ -897,6 +897,22 @@ button.chip:hover {
   white-space: nowrap;
 }
 
+/* The board column, the first to give way to the ellipsis */
+.card-state {
+  flex: 0 1000 auto;
+  min-width: 28px;
+  overflow: hidden;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Never squeezed: a long ref takes the ellipsis, the age stays on its line */
 .age {
   flex: none;

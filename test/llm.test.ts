@@ -114,9 +114,32 @@ describe('réponse du daily', () => {
   it('garde le détail en alerte seulement et écarte les niveaux et liens inconnus', () => {
     const { health } = dailyFrom(JSON.stringify(answer), ids, now)
     expect(health).toEqual([
-      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x' },
-      { source: 'Datadog', level: 'ok', text: 'RAS', detail: null, url: null },
+      { source: 'Sentry', level: 'alert', text: '2 régressions', detail: 'Crash au login', url: 'https://sentry.io/x', items: [] },
+      { source: 'Datadog', level: 'ok', text: 'RAS', detail: null, url: null, items: [] },
     ])
+  })
+
+  it('garde les chiffres suivis, sauf sur une source injoignable', () => {
+    const items = [
+      { label: '  TELEPROCESSING_FAILED ', value: '45 users · +60 %' },
+      { label: 'sans chiffre' },
+      { value: 'sans libellé' },
+      'pas un objet',
+      ...Array.from({ length: 10 }, (_, index) => ({ label: `EVENT_${index}`, value: `${index} users` })),
+    ]
+    const { health } = dailyFrom(
+      JSON.stringify({
+        health: [
+          { source: 'Erreurs app', level: 'weak', text: 'Télétransmission en hausse', items },
+          { source: 'Ximi', level: 'unavailable', text: 'Injoignable', items },
+        ],
+      }),
+      ids,
+      now,
+    )
+    expect(health[0].items?.[0]).toEqual({ label: 'TELEPROCESSING_FAILED', value: '45 users · +60 %' })
+    expect(health[0].items).toHaveLength(8)
+    expect(health[1].items).toEqual([])
   })
 
   it('échoue sans objet JSON', () => {

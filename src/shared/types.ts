@@ -108,6 +108,12 @@ export interface Meeting {
 
 export type HealthLevel = 'ok' | 'weak' | 'alert' | 'positive' | 'unavailable'
 
+// One figure behind a health line: an event and its users, a monitor and its state
+export interface HealthItem {
+  label: string
+  value: string
+}
+
 export interface HealthLine {
   source: string
   level: HealthLevel
@@ -115,6 +121,29 @@ export interface HealthLine {
   // Shown only when the line is an alert
   detail: string | null
   url: string | null
+  // Absent from the dailies written before lines had figures
+  items?: HealthItem[]
+}
+
+export type Store = 'app-store' | 'play-store'
+
+export interface StoreReview {
+  id: string
+  app: string
+  store: Store
+  rating: number
+  title: string | null
+  text: string
+  author: string
+  date: string
+  version: string | null
+  url: string
+}
+
+// What the stores said, and the app and store pairs that did not answer
+export interface StoreFeed {
+  reviews: StoreReview[]
+  failed: Array<{ app: string; store: Store }>
 }
 
 // What the daily skill wrote, once Flux checked it
@@ -202,6 +231,8 @@ export interface DailySheet {
   candidates: DailyIntention[]
   blockers: DailyBlocker[]
   health: HealthLine[] | null
+  // Reviews posted since the previous workday; null when no app is followed
+  reviews: StoreFeed | null
   counts: RankCount[]
 }
 

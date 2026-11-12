@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildDaily,
+  newReviews,
   previousWorkday,
   rankCounts,
   renderDailyNote,
@@ -9,7 +10,7 @@ import {
   type DailyInput,
 } from '../src/main/engine/daily'
 import { buildWrapup, emptyJournal, tick, type WrapupJournal } from '../src/main/engine/wrapup'
-import type { Rank, Signal, Topic, TopicView } from '../src/shared/types'
+import type { Rank, Signal, StoreReview, Topic, TopicView } from '../src/shared/types'
 
 // Local times: the daily follows the wall clock. 6 Nov 2026 is a Friday, 9 Nov a Monday
 const at = (day: number, hours: number, minutes = 0) => new Date(2026, 10, day, hours, minutes)
@@ -62,6 +63,7 @@ function input(overrides: Partial<DailyInput>): DailyInput {
     active: [],
     merged: [],
     fallback: null,
+    reviews: null,
     run: { date: '2026-11-10', status: 'none' },
     skill: 'ready',
     dailyTime: '09:30',
@@ -204,5 +206,82 @@ describe('note du vault', () => {
     expect(note).toContain('généré le 09:31')
     expect(note).toContain('- Sujet web#5 (web#5) — Attend le design · pour avancer : Relancer Nicolas')
     expect(note).toContain('- 🔴 **Sentry** : 2 régressions — Crash au login')
+  })
+})
+
+function review(id: string, date: Date, overrides: Partial<StoreReview> = {}): StoreReview {
+  return {
+    id,
+    app: 'Ouihelp Pro',
+    store: 'play-store',
+    rating: 2,
+    title: null,
+    text: `Avis ${id}`,
+    author: 'Camille',
+    date: date.toISOString(),
+    version: '4.2.0',
+    url: `https://play.example.test/${id}`,
+    ...overrides,
+  }
+}
+
+describe('retours stores', () => {
+  it('garde les avis depuis le dernier jour ouvré, du plus récent au plus ancien', () => {
+    const feed = {
+      reviews: [review('vendredi', at(6, 18)), review('lundi', at(9, 0, 5)), review('ce-matin', at(10, 8))],
+      failed: [{ app: 'Joya Pro', store: 'app-store' as const }],
+    }
+    const kept = newReviews(feed, at(10, 9, 30))
+    expect(kept?.reviews.map(item => item.id)).toEqual(['ce-matin', 'lundi'])
+    expect(kept?.failed).toEqual(feed.failed)
+    const monday = { reviews: feed.reviews.slice(0, 2), failed: [] }
+    expect(newReviews(monday, at(9, 9, 30))?.reviews.map(item => item.id)).toEqual(['lundi', 'vendredi'])
+  })
+
+  it('en montre huit au plus et rien sans application suivie', () => {
+    const many = Array.from({ length: 12 }, (_, index) => review(`r${index}`, at(10, 8, index)))
+    expect(newReviews({ reviews: many, failed: [] }, at(10, 9, 30))?.reviews).toHaveLength(8)
+    expect(newReviews(null, at(10, 9, 30))).toBeNull()
+  })
+
+  it('les écrit dans la note avec les chiffres de santé', () => {
+    const sheet = buildDaily(
+      input({
+        reviews: {
+          reviews: [review('r1', at(10, 8), { store: 'app-store', title: 'Plante', text: 'Écran  blanc\nau login', rating: 1 })],
+          failed: [{ app: 'Joya Pro', store: 'play-store' }],
+        },
+        run: {
+          date: '2026-11-10',
+          status: 'ready',
+          content: {
+            generatedAt: at(10, 9, 31).toISOString(),
+            intentions: [],
+            titles: {},
+            unblock: {},
+            health: [
+              {
+                source: 'Erreurs app',
+                level: 'weak',
+                text: 'Télétransmission en hausse',
+                detail: null,
+                url: null,
+                items: [{ label: 'TELEPROCESSING_FAILED', value: '45 users · +60 %' }],
+              },
+            ],
+          },
+        },
+      }),
+    )
+    const note = renderDailyNote(sheet, at(10, 9, 32))
+    expect(note).toContain('- 🟡 **Erreurs app** : Télétransmission en hausse\n  - TELEPROCESSING_FAILED : 45 users · +60 %')
+    expect(note).toContain('## Retours stores')
+    expect(note).toContain('- ★☆☆☆☆ Ouihelp Pro · App Store · 10/11 — **Plante** — Écran blanc au login ([voir](https://play.example.test/r1))')
+    expect(note).toContain('- Google Play injoignable pour Joya Pro')
+  })
+
+  it('n’ajoute pas la section un jour sans nouvel avis', () => {
+    const sheet = buildDaily(input({ reviews: { reviews: [review('vieux', at(2, 10))], failed: [] } }))
+    expect(renderDailyNote(sheet, at(10, 9, 32))).not.toContain('Retours stores')
   })
 })

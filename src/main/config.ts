@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 import type { ActionKind } from "../shared/types";
+import type { StoresConfig } from "./sources/stores";
 
 const HOME = homedir();
 
@@ -33,6 +34,8 @@ export interface FluxConfig {
     // Read-only MCP tools the daily may call, and servers it must not load
     allowedTools: string[];
     disallowedTools: string[];
+    // Apps whose new store reviews the daily shows, read by Flux itself
+    stores: StoresConfig;
   };
   // Prompt per action, with {url} and {ref} placeholders; overrides the built-in wording
   prompts: Partial<Record<ActionKind, string>>;
@@ -47,7 +50,7 @@ export const DEFAULT_CONFIG: FluxConfig = {
     repos: join(HOME, "code"),
     dailyCommand: join(HOME, ".claude/commands/daily.md"),
   },
-  daily: { allowedTools: [], disallowedTools: [] },
+  daily: { allowedTools: [], disallowedTools: [], stores: { country: "us", language: "en", apps: [] } },
   prompts: {},
 };
 
@@ -73,7 +76,11 @@ export function mergeConfig(overrides: Overrides): FluxConfig {
       repos: expand(paths.repos),
       dailyCommand: expand(paths.dailyCommand),
     },
-    daily: { ...DEFAULT_CONFIG.daily, ...overrides.daily },
+    daily: {
+      ...DEFAULT_CONFIG.daily,
+      ...overrides.daily,
+      stores: { ...DEFAULT_CONFIG.daily.stores, ...overrides.daily?.stores },
+    },
     prompts: { ...overrides.prompts },
   };
 }

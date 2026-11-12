@@ -1,6 +1,6 @@
 import { GripVertical, PenLine, Plus, RefreshCw, X } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { countLabel, YESTERDAY_LABEL } from '../../shared/dailyLabels'
+import { countLabel, stars, STORE_LABEL, YESTERDAY_LABEL } from '../../shared/dailyLabels'
 import { DAILY_TEMPLATE } from '../../shared/dailyTemplate'
 import { RANKS } from '../../shared/ranks'
 import type {
@@ -11,6 +11,7 @@ import type {
   HealthLevel,
   HealthLine,
   RefPill,
+  StoreReview,
 } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
 import { clock, displayTitle } from './format'
@@ -348,6 +349,16 @@ function HealthRow({ line }: { line: HealthLine }) {
         <strong>{line.source}</strong>
         {unavailable ? 'non consulté' : line.text}
         {line.detail && <span className="health-detail">{line.detail}</span>}
+        {line.items && line.items.length > 0 && (
+          <span className="health-items">
+            {line.items.map(item => (
+              <span key={item.label} className="health-item">
+                <span className="health-item-label">{item.label}</span>
+                <span className="health-item-value">{item.value}</span>
+              </span>
+            ))}
+          </span>
+        )}
       </span>
       {line.url && (
         <button
@@ -438,6 +449,58 @@ function Health({ sheet }: { sheet: DailySheet }) {
   )
 }
 
+function reviewDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function ReviewRow({ review }: { review: StoreReview }) {
+  return (
+    <li className={`review-row${review.rating <= 2 ? ' low' : ''}`}>
+      <span className="review-stars" aria-label={`${review.rating} sur 5`}>
+        {stars(review.rating)}
+      </span>
+      <span className="review-main">
+        <span className="review-meta">
+          <strong>{review.app}</strong>
+          {STORE_LABEL[review.store]} · {reviewDay(review.date)}
+          {review.version && ` · ${review.version}`}
+        </span>
+        <span className="review-text">
+          {review.title && <strong>{review.title} — </strong>}
+          {review.text}
+        </span>
+      </span>
+      <button type="button" className="ref-pill" onClick={() => void window.flux.openExternal(review.url)}>
+        <LinkIcon url={review.url} size={11} />
+        Voir
+      </button>
+    </li>
+  )
+}
+
+// Only new reviews show: the section stays away on a day without any
+function Reviews({ sheet }: { sheet: DailySheet }) {
+  const feed = sheet.reviews
+  if (!feed || (feed.reviews.length === 0 && feed.failed.length === 0)) return null
+  return (
+    <section className="daily-section" aria-labelledby="daily-reviews">
+      <h2 id="daily-reviews">Retours stores</h2>
+      {feed.reviews.length > 0 && (
+        <ul className="review-list">
+          {feed.reviews.map(review => (
+            <ReviewRow key={review.id} review={review} />
+          ))}
+        </ul>
+      )}
+      {feed.failed.map(miss => (
+        <p key={`${miss.app}-${miss.store}`} className="daily-hint">
+          {STORE_LABEL[miss.store]} injoignable pour {miss.app}
+        </p>
+      ))}
+    </section>
+  )
+}
+
 function Counts({ sheet, onOpen }: { sheet: DailySheet; onOpen(topicId: string): void }) {
   if (sheet.counts.length === 0) return <footer className="daily-counts">File vide</footer>
   return (
@@ -501,6 +564,7 @@ export function DailyView({ daily, onOpen, onNote }: { daily: DailySheet } & Lin
         <Today sheet={daily} actions={actions} />
         <Blockers sheet={daily} actions={actions} />
         <Health sheet={daily} />
+        <Reviews sheet={daily} />
         <Counts sheet={daily} onOpen={onOpen} />
       </div>
     </main>

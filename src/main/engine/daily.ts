@@ -1,4 +1,4 @@
-import { countLabel, YESTERDAY_LABEL } from '../../shared/dailyLabels'
+import { countLabel, stars, STORE_LABEL, YESTERDAY_LABEL } from '../../shared/dailyLabels'
 import { markedBlocked } from '../../shared/titles'
 import type {
   DailyBlocker,
@@ -11,6 +11,7 @@ import type {
   Rank,
   RankCount,
   RefPill,
+  StoreFeed,
   Topic,
   TopicView,
   YesterdayKind,
@@ -21,6 +22,7 @@ import { collectDone, dayKey, intentionDone, type DoneRecord, type WrapupJournal
 export const PROPOSED_INTENTIONS = 3
 export const MAX_INTENTIONS = 5
 const CANDIDATES = 8
+const MAX_REVIEWS = 8
 
 // What GitHub and Linear say was done, for a day Flux did not keep a journal of
 export interface ReviewedPr {
@@ -88,6 +90,8 @@ export interface DailyInput {
   active: TopicView[]
   merged: MergedPr[]
   fallback: DailyFallback | null
+  // What the stores said lately; null when no app is followed
+  reviews: StoreFeed | null
   run: DailyRun
   skill: DailySheet['skill']
   dailyTime: string
@@ -269,8 +273,20 @@ export function buildDaily(input: DailyInput): DailySheet {
     candidates,
     blockers: blockerLines(views, content?.unblock ?? {}, titles, urls),
     health: content?.health ?? null,
+    reviews: newReviews(input.reviews, now),
     counts: rankCounts(queue),
   }
+}
+
+// Only what is new: the reviews posted since the previous workday began, newest first
+export function newReviews(feed: StoreFeed | null, now: Date): StoreFeed | null {
+  if (!feed) return null
+  const since = previousWorkday(now).getTime()
+  const reviews = feed.reviews
+    .filter(review => new Date(review.date).getTime() >= since)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, MAX_REVIEWS)
+  return { reviews, failed: feed.failed }
 }
 
 const HEALTH_MARK: Record<HealthLevel, string> = {
@@ -279,6 +295,11 @@ const HEALTH_MARK: Record<HealthLevel, string> = {
   positive: '🟢',
   ok: '⚪',
   unavailable: '⚫',
+}
+
+function dayLabel(iso: string): string {
+  const date = new Date(iso)
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 function clockOf(iso: string): string {
@@ -316,6 +337,18 @@ export function renderDailyNote(sheet: DailySheet, now: Date): string {
     const detail = line.level === 'alert' && line.detail ? ` — ${line.detail}` : ''
     const link = line.url ? ` ([voir](${line.url}))` : ''
     lines.push(`- ${HEALTH_MARK[line.level]} **${line.source}** : ${text}${detail}${link}`)
+    for (const item of line.items ?? []) lines.push(`  - ${item.label} : ${item.value}`)
+  }
+  const reviews = sheet.reviews
+  if (reviews && (reviews.reviews.length > 0 || reviews.failed.length > 0)) {
+    lines.push('', '## Retours stores', '')
+    for (const review of reviews.reviews) {
+      const title = review.title ? `**${review.title}** — ` : ''
+      lines.push(
+        `- ${stars(review.rating)} ${review.app} · ${STORE_LABEL[review.store]} · ${dayLabel(review.date)} — ${title}${review.text.replace(/\s+/g, ' ')} ([voir](${review.url}))`,
+      )
+    }
+    for (const miss of reviews.failed) lines.push(`- ${STORE_LABEL[miss.store]} injoignable pour ${miss.app}`)
   }
   lines.push('', '## File', '')
   lines.push(sheet.counts.length > 0 ? sheet.counts.map(count => countLabel(count.rank, count.count)).join(' · ') : 'Vide')

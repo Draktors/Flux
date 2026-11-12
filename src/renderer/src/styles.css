@@ -1237,6 +1237,96 @@ button.ref-pill:hover {
   font-size: 13px;
 }
 
+.health-items {
+  display: grid;
+  flex-basis: 100%;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: 2px 14px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.health-item {
+  display: contents;
+}
+
+.health-item-label {
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-item-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.review-row {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+}
+
+.review-stars {
+  color: var(--waiting);
+  font-size: 13px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.review-row.low .review-stars {
+  color: var(--danger);
+}
+
+.review-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.review-meta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.review-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  user-select: text;
+}
+
+.review-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .daily-setup {
   display: flex;
   flex-direction: column;

@@ -12,6 +12,7 @@ import type {
   SourceHealth,
   SourceName,
   SourceProgress,
+  StoreFeed,
   Topic,
   TopicView,
 } from '../../shared/types'
@@ -50,6 +51,7 @@ import {
 
 const TICK_MS = 60_000
 const CALENDAR_EVERY_TICKS = 15
+const REVIEWS_EVERY_TICKS = 30
 
 export interface FluxHooks {
   onState(state: AppState): void
@@ -60,6 +62,8 @@ export interface FluxHooks {
   fetchTickets(keys: string[]): Promise<Ticket[] | null>
   // My tickets completed since an ISO date; empty without Linear
   fetchCompleted(since: string): Promise<CompletedTicket[]>
+  // The latest store reviews of the apps followed; null when none is
+  fetchReviews(): Promise<StoreFeed | null>
   fetchMeetings(): Promise<Meeting[] | null>
   closeThreads(topic: Topic): Promise<void>
   // Resolves the session id of threads opened in Claude Desktop; returns the topics it changed
@@ -127,6 +131,7 @@ export class Flux {
   // Past days do not change: their journals are read once
   private pastJournals = new Map<string, WrapupJournal | null>()
   protected fallback: DailyFallback | null = null
+  private reviews: StoreFeed | null = null
   private fallbackDay = ''
   private state: AppState | null = null
   private timer: NodeJS.Timeout | null = null
@@ -344,6 +349,14 @@ export class Flux {
           .catch(error => this.track('linear', error)),
       ])
 
+      if (this.tickCount % REVIEWS_EVERY_TICKS === 0) {
+        await this.hooks
+          .fetchReviews()
+          .then(feed => {
+            this.reviews = feed
+          })
+          .catch(() => undefined)
+      }
       if (this.tickCount % CALENDAR_EVERY_TICKS === 0) {
         await this.hooks
           .fetchMeetings()
@@ -471,6 +484,7 @@ export class Flux {
         active,
         merged: this.github?.merged ?? [],
         fallback: this.fallback,
+        reviews: this.reviews,
         run: this.daily,
         skill: existsSync(DAILY_COMMAND) ? 'ready' : 'missing',
         dailyTime: this.settings.values.dailyTime,

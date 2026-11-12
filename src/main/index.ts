@@ -13,6 +13,7 @@ import {
   Tray,
 } from 'electron'
 import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
+import { CONFIG } from './config'
 import { Flux } from './engine/poller'
 import { Daily, localDate } from './llm/daily'
 import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
@@ -22,6 +23,7 @@ import { checkCalendarUrl, checkGithub, checkLinearKey } from './onboarding'
 import { ARCHIVE_DIR, DAILY_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar } from './sources/calendar'
 import { fetchCompleted, fetchLinear } from './sources/linear'
+import { fetchStoreReviews } from './sources/stores'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
@@ -322,6 +324,7 @@ async function main(): Promise<void> {
       const key = settings.secret('linearKey')
       return key ? fetchCompleted(key, since) : []
     },
+    fetchReviews: async () => (CONFIG.daily.stores.apps.length > 0 ? fetchStoreReviews(CONFIG.daily.stores) : null),
     fetchMeetings: async () => {
       const url = settings.secret('calendarUrl')
       return url ? fetchCalendar(url) : null

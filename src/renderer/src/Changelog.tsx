@@ -4,6 +4,8 @@ import { SCENES, Spot } from './Spot'
 
 // Newest first, one line each: the id of the first entry marks what was read
 const ENTRIES: Array<{ id: string; date: string; text: string; scene?: string }> = [
+  { id: '2026-11-12-search', date: '12 nov.', text: 'Recherche ⌘K dans tout Flux' },
+  { id: '2026-11-12-links', date: '12 nov.', text: 'Clic droit : copier le lien source ou le lien Flux, qui rouvre Flux au bon endroit' },
   { id: '2026-11-10-owner', date: '10 nov.', text: 'Attente coupée entre mon travail et mes contributions' },
   { id: '2026-11-10-stores', date: '10 nov.', text: 'Erreurs app et avis des stores dans le Daily' },
   { id: '2026-11-10-daily', date: '10 nov.', text: 'Daily refait, en blocs courts', scene: 'daily' },

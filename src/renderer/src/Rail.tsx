@@ -4,6 +4,7 @@ import { RANKS } from '../../shared/ranks'
 import type { Item, Rank, TopicView } from '../../shared/types'
 import { LinkIcon } from './Brand'
 import { displayTitle, waitingFor } from './format'
+import { looseId, menuOfItem, menuOfView, showMenu } from './navigation'
 import { rankStyle, tint } from './rankStyle'
 
 interface CardProps {
@@ -32,6 +33,7 @@ function Card({ view, selected, fresh, onSelect }: CardProps) {
       aria-current={selected ? 'true' : undefined}
       style={tint(rankStyle(view.rank))}
       onClick={() => onSelect(view.topic.id)}
+      onContextMenu={event => showMenu(event, menuOfView(view))}
     >
       {fresh && <span className="badge">Nouveau</span>}
       <span className="card-head">
@@ -43,8 +45,6 @@ function Card({ view, selected, fresh, onSelect }: CardProps) {
     </button>
   )
 }
-
-export const looseId = (item: Item) => `loose:${item.ref}`
 
 interface LooseCardProps {
   item: Item
@@ -69,6 +69,7 @@ function LooseCard({ item, selected, onSelect }: LooseCardProps) {
       aria-current={selected ? 'true' : undefined}
       style={tint(rankStyle(null))}
       onClick={() => onSelect(looseId(item))}
+      onContextMenu={event => showMenu(event, menuOfItem(item))}
     >
       <span className="card-head">
         <strong className="card-link">

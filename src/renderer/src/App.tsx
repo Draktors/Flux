@@ -1,6 +1,7 @@
-import { CalendarClock, Plug, Plus, RefreshCw, Settings, Waves } from 'lucide-react'
+import { CalendarClock, Plug, Plus, RefreshCw, Search as SearchIcon, Settings, Waves } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
+import { parseFluxLink } from '../../shared/links'
+import type { AppState, Settings as FluxSettings, SourceName } from '../../shared/types'
 import { Boot, type BootProgress } from './Boot'
 import { Changelog } from './Changelog'
 import { DailyView } from './DailyView'
@@ -8,22 +9,32 @@ import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
 import { Inspector } from './Inspector'
 import { Onboarding } from './Onboarding'
-import { looseId, ownerGroups, Rail } from './Rail'
+import {
+  allViews,
+  listOf,
+  looseId,
+  resolveRoute,
+  tabFor,
+  type ListTab,
+  type SearchResult,
+  type SheetTab,
+  type Tab,
+} from './navigation'
+import { ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
+import { Search } from './Search'
 import { SettingsPanel } from './SettingsPanel'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
 import { WrapupView } from './WrapupView'
 
-type ListTab = 'queue' | 'active' | 'waiting' | 'notes'
-type SheetTab = 'wrapup' | 'daily'
-type Tab = ListTab | SheetTab
 
 const DAILY_READ_KEY = 'flux.dailyRead'
 const WRAPUP_READ_KEY = 'flux.wrapupRead'
 // The loading scene plays at least this long, then dissolves into the app
 const BOOT_MIN_MS = 1800
 const BOOT_EXIT_MS = 900
+const TOAST_MS = 4000
 
 const SOURCE_LABEL: Record<SourceName, string> = {
   github: 'GitHub',
@@ -32,27 +43,8 @@ const SOURCE_LABEL: Record<SourceName, string> = {
   calendar: 'Agenda',
 }
 
-function allViews(state: AppState): TopicView[] {
-  return [...state.queue, ...state.active, ...state.waiting, ...state.notes, ...state.dormant]
-}
-
 function isSheet(tab: Tab): tab is SheetTab {
   return tab === 'wrapup' || tab === 'daily'
-}
-
-// Waiting puts my own work before the work of others; dormant topics close each half
-function listOf(state: AppState, tab: ListTab): TopicView[] {
-  if (tab !== 'waiting') return state[tab]
-  return ownerGroups([...state.waiting, ...state.dormant], []).flatMap(group => group.views)
-}
-
-function tabFor(state: AppState, id: string): ListTab | null {
-  const has = (views: TopicView[]) => views.some(view => view.topic.id === id)
-  if (has(state.queue)) return 'queue'
-  if (has(state.active)) return 'active'
-  if (has(listOf(state, 'waiting'))) return 'waiting'
-  if (has(state.notes)) return 'notes'
-  return null
 }
 
 function emptyTitle(tab: ListTab, looseCount: number): string {
@@ -90,6 +82,10 @@ export function App() {
   const [progress, setProgress] = useState<BootProgress>({})
   const [boot, setBoot] = useState<'playing' | 'leaving' | 'done'>('playing')
   const [refreshing, setRefreshing] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  // A flux:// link waits for the first state before it can land
+  const [link, setLink] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const bootStart = useRef(performance.now())
 
   useEffect(() => {
@@ -137,6 +133,44 @@ export function App() {
     [],
   )
 
+  useEffect(() => {
+    const stop = window.flux.onOpenLink(setLink)
+    void window.flux.takeLink().then(waiting => waiting && setLink(waiting))
+    return stop
+  }, [])
+
+  useEffect(() => {
+    if (!link || !state) return
+    setLink(null)
+    const route = parseFluxLink(link)
+    const target = route ? resolveRoute(state, route) : null
+    if (!target) {
+      setToast(route && route.kind !== 'tab' ? `Plus dans Flux : ${route.kind === 'ref' ? route.ref : route.id}` : 'Lien Flux inconnu')
+      return
+    }
+    setSettingsOpen(false)
+    setSearchOpen(false)
+    setTab(target.tab)
+    setSelected(target.selected)
+  }, [link, state])
+
+  useEffect(() => {
+    if (!toast) return undefined
+    const timer = setTimeout(() => setToast(null), TOAST_MS)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => window.flux.onOpenDaily(() => setTab('daily')), [])
   useEffect(
     () =>
@@ -151,7 +185,7 @@ export function App() {
     if (!state || !selected) return
     const owner = tabFor(state, selected)
     if (owner && owner !== tab) setTab(owner)
-  }, [selected])
+  }, [selected, state === null])
 
   useEffect(() => {
     if (tab === 'daily' && state?.daily.status === 'ready') {
@@ -197,7 +231,7 @@ export function App() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen) return
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen || searchOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       const index = order.indexOf(currentId ?? '')
       const next = order[index + (event.key === 'ArrowRight' ? 1 : -1)]
@@ -208,7 +242,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [order, currentId, sheet, settingsOpen])
+  }, [order, currentId, sheet, settingsOpen, searchOpen])
 
   // Same slot in both trees, so the scene keeps playing while the app appears underneath
   const bootScene =
@@ -271,6 +305,12 @@ export function App() {
   const openTopic = (id: string) => {
     setSelected(id)
     setTab(tabFor(state, id) ?? 'queue')
+  }
+  const pick = (result: SearchResult) => {
+    setSearchOpen(false)
+    setSettingsOpen(false)
+    setTab(result.tab)
+    setSelected(result.kind === 'page' ? null : result.id)
   }
   // A dated line at the end of the topic's note
   const addNote = (id: string, text: string) => {
@@ -337,6 +377,15 @@ export function App() {
                 Connecter {toConnect.map(name => SOURCE_LABEL[name]).join(', ')}
               </button>
             )}
+            <button
+              type="button"
+              className="round glass"
+              aria-label="Rechercher"
+              title="Rechercher · ⌘K"
+              onClick={() => setSearchOpen(true)}
+            >
+              <SearchIcon size={17} aria-hidden="true" />
+            </button>
             <button
             type="button"
             className="round glass refresh"
@@ -405,6 +454,13 @@ export function App() {
               onSelect={setSelected}
             />
           </>
+        )}
+
+        {searchOpen && <Search state={state} onPick={pick} onClose={() => setSearchOpen(false)} />}
+        {toast && (
+          <p className="toast glass" role="status">
+            {toast}
+          </p>
         )}
 
         {settingsOpen && (

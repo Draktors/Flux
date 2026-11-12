@@ -29,6 +29,14 @@
     "directories": {
       "output": "dist"
     },
+    "protocols": [
+      {
+        "name": "Flux",
+        "schemes": [
+          "flux"
+        ]
+      }
+    ],
     "mac": {
       "target": "dir",
       "identity": null,

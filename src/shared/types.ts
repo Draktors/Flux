@@ -1,3 +1,5 @@
+import type { LinkMenu } from './links'
+
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
 // parked: in a Linear backlog with nothing asked of me, shown nowhere until someone asks
 export type Ball = 'me' | 'others' | 'agent' | 'dormant' | 'parked'
@@ -348,6 +350,11 @@ export interface FluxApi {
   onOpenTopic(listener: (id: string) => void): () => void
   onOpenDaily(listener: () => void): () => void
   onOpenWrapup(listener: () => void): () => void
+  // A flux:// link opened from outside: the one waiting at launch, then each new one
+  takeLink(): Promise<string | null>
+  onOpenLink(listener: (link: string) => void): () => void
+  // The native right-click menu that copies a line's links
+  showLinkMenu(menu: LinkMenu): Promise<void>
   // Ticks or unticks a wrap-up line: a free task closes, a closed topic reopens
   checkWrapup(id: string, done: boolean): Promise<void>
   refresh(): Promise<void>

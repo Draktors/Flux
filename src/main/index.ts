@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   Menu,
@@ -11,7 +12,10 @@ import {
   powerMonitor,
   shell,
   Tray,
+  type MenuItemConstructorOptions,
+  type WebContents,
 } from 'electron'
+import { FLUX_SCHEME, linkMenuEntries, parseFluxLink, type LinkMenu } from '../shared/links'
 import type { AppState, ProposedAction, SettingsPatch, Topic } from '../shared/types'
 import { CONFIG } from './config'
 import { Flux } from './engine/poller'
@@ -39,6 +43,9 @@ let flux: Flux
 let settings: SettingsStore
 let daily: Daily
 const liveNotifications = new Set<Notification>()
+// A flux:// link waits here until the window can take it
+let pendingLink: string | null = null
+const linkReady = new WeakSet<WebContents>()
 
 function pageUrl(hash = ''): { url?: string; file?: string } {
   const dev = process.env.ELECTRON_RENDERER_URL
@@ -78,6 +85,7 @@ function openMain(): BrowserWindow {
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
+  window.webContents.on('did-start-loading', () => linkReady.delete(window.webContents))
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -133,6 +141,35 @@ function showTopic(id: string): void {
 
 function showWrapup(): void {
   sendToMain('flux:open-wrapup-view')
+}
+
+// Sent at once to a window already listening, otherwise kept until it asks
+function openLink(link: string): void {
+  if (!parseFluxLink(link)) return
+  if (!app.isReady()) {
+    pendingLink = link
+    return
+  }
+  const window = openMain()
+  if (linkReady.has(window.webContents)) window.webContents.send('flux:open-link', link)
+  else pendingLink = link
+}
+
+function showLinkMenu(sender: WebContents, menu: LinkMenu): void {
+  const entries = linkMenuEntries(menu)
+  if (entries.length === 0) return
+  const item = (entry: { label: string; copy: string }): MenuItemConstructorOptions => ({
+    label: entry.label,
+    click: () => clipboard.writeText(entry.copy),
+  })
+  const sources = entries.filter(entry => !entry.copy.startsWith(`${FLUX_SCHEME}:`))
+  const flux = entries.filter(entry => entry.copy.startsWith(`${FLUX_SCHEME}:`))
+  const template: MenuItemConstructorOptions[] = [
+    ...sources.map(item),
+    ...(sources.length > 0 && flux.length > 0 ? [{ type: 'separator' as const }] : []),
+    ...flux.map(item),
+  ]
+  Menu.buildFromTemplate(template).popup({ window: BrowserWindow.fromWebContents(sender) ?? undefined })
 }
 
 function trayLabel(state: AppState): string {
@@ -252,6 +289,13 @@ function registerIpc(): void {
     }
     setTimeout(() => void flux.refresh(), THREAD_SETTLE_MS)
   })
+  ipcMain.handle('flux:take-link', event => {
+    linkReady.add(event.sender)
+    const link = pendingLink
+    pendingLink = null
+    return link
+  })
+  ipcMain.handle('flux:link-menu', (event, menu: LinkMenu) => showLinkMenu(event.sender, menu))
   ipcMain.handle('flux:open-external', (_event, url: string) => {
     if (/^https?:/i.test(url)) return shell.openExternal(url)
     return undefined
@@ -291,6 +335,11 @@ async function main(): Promise<void> {
     app.quit()
     return
   }
+  // Before ready: a link that launches Flux arrives first
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    openLink(url)
+  })
   await app.whenReady()
   settings = new SettingsStore()
   const triage = new Triage()
@@ -342,9 +391,16 @@ async function main(): Promise<void> {
   buildTray()
   registerCapture()
   openMain()
-  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true })
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true })
+    app.setAsDefaultProtocolClient(FLUX_SCHEME)
+  }
   powerMonitor.on('resume', () => void flux.refresh())
-  app.on('second-instance', () => openMain())
+  app.on('second-instance', (_event, argv) => {
+    const link = argv.find(arg => arg.startsWith(`${FLUX_SCHEME}://`))
+    if (link) openLink(link)
+    else openMain()
+  })
   app.on('activate', () => openMain())
   app.on('window-all-closed', () => undefined)
   app.on('will-quit', () => {

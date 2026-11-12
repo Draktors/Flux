@@ -29,6 +29,13 @@ const api: FluxApi = {
     ipcRenderer.on('flux:open-wrapup-view', handler)
     return () => ipcRenderer.removeListener('flux:open-wrapup-view', handler)
   },
+  takeLink: () => ipcRenderer.invoke('flux:take-link'),
+  onOpenLink(listener) {
+    const handler = (_event: unknown, link: string) => listener(link)
+    ipcRenderer.on('flux:open-link', handler)
+    return () => ipcRenderer.removeListener('flux:open-link', handler)
+  },
+  showLinkMenu: menu => ipcRenderer.invoke('flux:link-menu', menu),
   checkWrapup: (id, done) => ipcRenderer.invoke('flux:check-wrapup', id, done),
   refresh: () => ipcRenderer.invoke('flux:refresh'),
   createNote: text => ipcRenderer.invoke('flux:create-note', text),

@@ -1,9 +1,11 @@
 import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, MessageCircleQuestion, Pencil } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
+import type { LinkMenu } from '../../shared/links'
 import { RANKS } from '../../shared/ranks'
 import type { AskedLine, Item, ProposedAction, TopicView } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
 import { displayTitle, markedBlocked, waitingFor } from './format'
+import { menuOfItem, menuOfView, showMenu } from './navigation'
 import { rankStyle } from './rankStyle'
 import { useDraft } from './useDraft'
 
@@ -27,6 +29,13 @@ function AskedList({ lines }: { lines: AskedLine[] }) {
       ))}
     </ul>
   )
+}
+
+// Text being edited or selected keeps the system menu
+function heroMenu(event: MouseEvent<HTMLElement>, menu: LinkMenu): void {
+  const target = event.target as HTMLElement
+  if (target.closest('textarea, input') || window.getSelection()?.toString()) return
+  showMenu(event, menu)
 }
 
 const askedLines = (items: Item[]): AskedLine[] => items.flatMap(item => (item.asked ? [item.asked] : []))
@@ -71,7 +80,7 @@ export function Hero({ view, position }: HeroProps) {
     action.prompt ? <BrandIcon brand="claude" size={size} /> : <LinkIcon url={action.url} size={size} />
 
   return (
-    <section className="hero" key={topic.id}>
+    <section className="hero" key={topic.id} onContextMenu={event => heroMenu(event, menuOfView(view))}>
       <p className="hero-rank">
         <span className="tile">
           <Icon size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -231,7 +240,7 @@ export function Hero({ view, position }: HeroProps) {
 export function LooseHero({ item }: { item: Item }) {
   const where = item.kind === 'pr' ? 'Ouvrir sur GitHub' : 'Ouvrir dans Linear'
   return (
-    <section className="hero" key={item.ref}>
+    <section className="hero" key={item.ref} onContextMenu={event => heroMenu(event, menuOfItem(item))}>
       <p className="hero-rank">
         <span className="tile">
           <Hourglass size={15} strokeWidth={2.2} aria-hidden="true" />

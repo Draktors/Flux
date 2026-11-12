@@ -15,6 +15,7 @@ import type {
 } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
 import { clock, displayTitle } from './format'
+import { menuOfLine, showMenu } from './navigation'
 import { rankStyle } from './rankStyle'
 
 const YESTERDAY_SHOWN = 6
@@ -142,7 +143,7 @@ function NoteButton({ line, onNote }: { line: Line; onNote: LineActions['onNote'
 function LineMain({ line, meta, onOpen }: { line: Line; meta?: string | null; onOpen(): void }) {
   const openable = line.live || line.url !== null
   return (
-    <div className="daily-main">
+    <div className="daily-main" onContextMenu={event => showMenu(event, menuOfLine(line))}>
       <span className="daily-title">
         <button type="button" className="daily-open" disabled={!openable} onClick={onOpen}>
           {titleOf(line)}

@@ -293,7 +293,9 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     }
   }
 
+  // A backlog is parked work, neither waiting on anyone nor to pick up: only a request brings it back
+  const parked = ticket.stateType === 'backlog'
   const stale = ageDays(ticket.updatedAt, ctx.now) > DORMANT_DAYS
-  const ball = signals.length > 0 ? 'me' : stale ? 'dormant' : 'others'
+  const ball = signals.length > 0 ? 'me' : parked ? 'parked' : stale ? 'dormant' : 'others'
   return { ...base, terminal: false, ball, signals }
 }

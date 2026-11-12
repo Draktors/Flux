@@ -93,7 +93,8 @@ function ballOf(topic: Topic, items: Item[], signals: Signal[], threads: ThreadV
   if (threads.some(thread => thread.status === 'busy')) return 'agent'
   if (topic.blocked) return 'others'
   if (signals.length > 0) return 'me'
-  if (items.length > 0 && items.every(item => item.ball === 'dormant')) return 'dormant'
+  if (items.length > 0 && items.every(item => item.ball === 'parked')) return 'parked'
+  if (items.length > 0 && items.every(item => item.ball === 'dormant' || item.ball === 'parked')) return 'dormant'
   return 'others'
 }
 

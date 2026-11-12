@@ -336,6 +336,25 @@ describe('tickets', () => {
     expect(rank('Backlog')).toBeUndefined()
   })
 
+  it('range un backlog sans demande hors de l’attente, et le ramène sur une demande', () => {
+    const mention = {
+      id: 'a',
+      kind: 'mention' as const,
+      author: 'camille.martin',
+      excerpt: 'tu peux regarder ?',
+      text: 'tu peux regarder ?',
+      at: '2026-11-05T17:25:00Z',
+      url: 'https://linear.test/c',
+    }
+    const ball = (overrides: Partial<Ticket>) => itemFromTicket(ticket(overrides), context).ball
+    expect(ball({ stateName: 'Backlog' })).toBe('parked')
+    expect(ball({ stateName: 'Icebox', assignedToMe: false })).toBe('parked')
+    expect(ball({ stateName: 'Backlog', notices: [{ ...mention, kind: 'comment', waitingOnMe: false }] })).toBe('parked')
+    expect(ball({ stateName: 'Backlog', notices: [mention] })).toBe('me')
+    expect(ball({ stateName: 'To frame' })).toBe('me')
+    expect(ball({ stateName: 'Todo Weekly', stateType: 'unstarted' })).toBe('others')
+  })
+
   it('propose le diagnostic sur un ticket de bug', () => {
     const item = itemFromTicket(ticket({ stateName: 'In Progress', labels: ['Vrai bug'] }), context)
     expect(item.signals[0].action).toBe('diagnostic')
@@ -392,6 +411,21 @@ describe('rapprochement sujets / signaux', () => {
       ['review', false],
       ['mixte', true],
       ['note', true],
+    ])
+  })
+
+  it('cache un sujet dont tous les liens dorment en backlog', () => {
+    const parked = itemFromTicket(ticket({ stateName: 'Backlog' }), context)
+    const review = itemFromPullRequest(pr({ number: 3, author: 'sam-lee', headRefName: 'feature/export' }), context)
+    const result = reconcile(
+      [topic({ id: 'seul', links: ['APP-1'] }), topic({ id: 'avec-pr', links: ['mobile#3', 'APP-1'] })],
+      [parked, review],
+      [],
+      NOW,
+    )
+    expect(result.views.map(view => [view.topic.id, view.ball])).toEqual([
+      ['seul', 'parked'],
+      ['avec-pr', 'others'],
     ])
   })
 

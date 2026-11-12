@@ -1,5 +1,6 @@
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
-export type Ball = 'me' | 'others' | 'agent' | 'dormant'
+// parked: in a Linear backlog with nothing asked of me, shown nowhere until someone asks
+export type Ball = 'me' | 'others' | 'agent' | 'dormant' | 'parked'
 export type TopicStatus = 'inbox' | 'open' | 'done'
 export type ThreadStatus = 'busy' | 'idle' | 'closed' | 'pending'
 export type SourceName = 'github' | 'linear' | 'agents' | 'calendar'
@@ -36,7 +37,7 @@ export interface Item {
   url: string
   branch?: string
   terminal: boolean
-  ball: 'me' | 'others' | 'dormant'
+  ball: 'me' | 'others' | 'dormant' | 'parked'
   // My PR or a ticket assigned to me, as opposed to someone else's I take part in
   mine: boolean
   signals: Signal[]

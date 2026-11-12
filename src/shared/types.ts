@@ -41,6 +41,14 @@ export interface Item {
   // My PR or a ticket assigned to me, as opposed to someone else's I take part in
   mine: boolean
   signals: Signal[]
+  // My comment on it that nobody answered yet
+  asked?: AskedLine
+}
+
+export interface AskedLine {
+  excerpt: string
+  at: string
+  url: string
 }
 
 export interface ThreadRef {

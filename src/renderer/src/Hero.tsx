@@ -1,13 +1,35 @@
-import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, Pencil } from 'lucide-react'
+import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, MessageCircleQuestion, Pencil } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { RANKS } from '../../shared/ranks'
-import type { Item, ProposedAction, TopicView } from '../../shared/types'
+import type { AskedLine, Item, ProposedAction, TopicView } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
 import { displayTitle, markedBlocked, waitingFor } from './format'
 import { rankStyle } from './rankStyle'
 import { useDraft } from './useDraft'
 
 const MAX_SIGNALS = 3
+
+// My comments still waiting for an answer, each opening the comment itself
+function AskedList({ lines }: { lines: AskedLine[] }) {
+  if (lines.length === 0) return null
+  return (
+    <ul className="hero-asked">
+      {lines.map(line => (
+        <li key={line.url}>
+          <button type="button" className="hero-asked-link" onClick={() => void window.flux.openExternal(line.url)}>
+            <MessageCircleQuestion size={15} aria-hidden="true" />
+            <span>
+              {line.excerpt}
+              <span className="hero-asked-age"> · ma question, sans réponse depuis {waitingFor(line.at)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+const askedLines = (items: Item[]): AskedLine[] => items.flatMap(item => (item.asked ? [item.asked] : []))
 
 interface HeroProps {
   view: TopicView
@@ -106,6 +128,8 @@ export function Hero({ view, position }: HeroProps) {
           )}
         </ul>
       )}
+
+      {view.signals.length === 0 && <AskedList lines={askedLines(view.items)} />}
 
       <div className="hero-actions">
         {primary && (
@@ -224,6 +248,8 @@ export function LooseHero({ item }: { item: Item }) {
         <span>{item.kind === 'pr' ? 'Pull request' : 'Ticket'}</span>
         {item.branch && <span>{item.branch}</span>}
       </p>
+
+      <AskedList lines={askedLines([item])} />
 
       <div className="hero-actions">
         <button

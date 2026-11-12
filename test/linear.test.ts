@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  askedComments,
   fetchLinear,
   linkedFilter,
   mergeTickets,
   noticeFromNotification,
   type RawNotification,
+  type RawOwnComment,
 } from '../src/main/sources/linear'
 
 const NOW = new Date('2026-11-06T12:00:00Z')
@@ -133,8 +135,61 @@ describe('tickets liés aux sujets', () => {
       },
       notifications: { nodes: [] },
     }
-    vi.stubGlobal('fetch', async () => new Response(JSON.stringify({ data })))
+    vi.stubGlobal('fetch', async (_url: string, init: { body: string }) =>
+      init.body.includes('isMe: { eq: true }')
+        ? new Response('indisponible', { status: 500 })
+        : new Response(JSON.stringify({ data })),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const tickets = await fetchLinear('clef', ['APP-982'])
     expect(tickets.map(ticket => ticket.key)).toEqual(['APP-982'])
+  })
+})
+
+describe('mes commentaires sans réponse', () => {
+  const reply = (createdAt: string, isMe = false) => ({ createdAt, user: { isMe } })
+  const own = (overrides: Partial<RawOwnComment> = {}, replies: Array<ReturnType<typeof reply> | { createdAt: string; user: null }> = []): RawOwnComment => ({
+    id: 'm1',
+    body: '@camille tu peux valider le **design** avant jeudi ? https://figma.test/x',
+    url: 'https://linear.app/acme/issue/WEB-3434#comment-m1',
+    createdAt: '2026-11-05T10:00:00Z',
+    resolvedAt: null,
+    parent: null,
+    issue: { ...issue({ assignee: { isMe: false } }), comments: { nodes: [reply('2026-11-05T10:00:00Z', true), ...replies] } },
+    ...overrides,
+  })
+
+  it('garde mon dernier commentaire par ticket tant que personne n’a répondu', () => {
+    const asked = askedComments([
+      own({ id: 'vieux', createdAt: '2026-11-04T09:00:00Z' }),
+      own({}, [reply('2026-11-05T11:00:00Z', true), { createdAt: '2026-11-05T12:00:00Z', user: null }]),
+    ])
+    expect(asked).toHaveLength(1)
+    expect(asked[0].asked).toMatchObject({
+      id: 'm1',
+      excerpt: '@camille tu peux valider le design avant jeudi ?',
+      at: '2026-11-05T10:00:00Z',
+      url: 'https://linear.app/acme/issue/WEB-3434#comment-m1',
+    })
+  })
+
+  it('écarte un commentaire auquel quelqu’un a répondu, un fil résolu ou un ticket fermé', () => {
+    expect(askedComments([own({}, [reply('2026-11-05T15:00:00Z')])])).toEqual([])
+    expect(askedComments([own({ resolvedAt: '2026-11-05T16:00:00Z' })])).toEqual([])
+    expect(askedComments([own({ parent: { resolvedAt: '2026-11-05T16:00:00Z' } })])).toEqual([])
+    const closed = own()
+    closed.issue!.state = { name: 'Done', type: 'completed' }
+    expect(askedComments([closed, own({ id: 'projet', issue: null })])).toEqual([])
+  })
+
+  it('ajoute le ticket commenté, ou complète celui qui m’est déjà assigné', () => {
+    const tickets = mergeTickets([issue({ identifier: 'APP-1' })], [], [], NOW, [
+      own(),
+      own({ id: 'm2', issue: { ...issue({ identifier: 'APP-1' }), comments: { nodes: [] } } }),
+    ])
+    expect(tickets.map(ticket => [ticket.key, ticket.assignedToMe, ticket.asked?.id])).toEqual([
+      ['APP-1', true, 'm2'],
+      ['WEB-3434', false, 'm1'],
+    ])
   })
 })

@@ -55,6 +55,16 @@ export type LinearNotice = {
   waitingOnMe?: boolean
 }
 
+// A comment of mine nobody answered: awaitsReply comes from the triage, absent until it ran
+export interface AskedComment {
+  id: string
+  excerpt: string
+  text: string
+  at: string
+  url: string
+  awaitsReply?: boolean
+}
+
 export interface Ticket {
   key: string
   title: string
@@ -65,6 +75,7 @@ export interface Ticket {
   updatedAt: string
   labels: string[]
   notices: LinearNotice[]
+  asked?: AskedComment
 }
 
 export interface RankContext {
@@ -293,9 +304,12 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     }
   }
 
-  // A backlog is parked work, neither waiting on anyone nor to pick up: only a request brings it back
+  // A backlog is parked work, neither waiting on anyone nor to pick up: only a request brings it back,
+  // mine to someone else included
+  const asked = ticket.asked && ticket.asked.awaitsReply !== false ? ticket.asked : undefined
   const parked = ticket.stateType === 'backlog'
   const stale = ageDays(ticket.updatedAt, ctx.now) > DORMANT_DAYS
-  const ball = signals.length > 0 ? 'me' : parked ? 'parked' : stale ? 'dormant' : 'others'
-  return { ...base, terminal: false, ball, signals }
+  const ball = signals.length > 0 ? 'me' : asked ? 'others' : parked ? 'parked' : stale ? 'dormant' : 'others'
+  const line = asked ? { asked: { excerpt: asked.excerpt, at: asked.at, url: asked.url } } : {}
+  return { ...base, terminal: false, ball, signals, ...line }
 }

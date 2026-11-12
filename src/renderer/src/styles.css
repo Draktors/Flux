@@ -458,6 +458,44 @@ button.chip:hover {
   font-weight: 400;
 }
 
+.hero-asked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hero-asked-link {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 640px;
+  padding: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.hero-asked-link:hover {
+  color: #ffffff;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+  text-underline-offset: 3px;
+}
+
+.hero-asked-link svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--waiting);
+}
+
+.hero-asked-age {
+  color: var(--text-3);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+
 .hero-blocked {
   align-self: flex-start;
   padding: 5px 12px;

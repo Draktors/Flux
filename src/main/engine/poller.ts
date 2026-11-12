@@ -115,6 +115,7 @@ function summarize(view: TopicView) {
     url: view.items[0]?.url ?? null,
     blocked: view.topic.blocked ?? null,
     mine: view.mine,
+    asked: view.items.find(item => item.asked)?.asked?.excerpt ?? null,
   }
 }
 
@@ -539,7 +540,13 @@ export class Flux {
       active: state.active.map(summarize),
       waitingOnOthers: [
         ...state.waiting.map(summarize),
-        ...state.loose.map(item => ({ title: item.title, links: [item.ref], url: item.url, mine: item.mine })),
+        ...state.loose.map(item => ({
+          title: item.title,
+          links: [item.ref],
+          url: item.url,
+          mine: item.mine,
+          asked: item.asked?.excerpt ?? null,
+        })),
       ],
       dormant: state.dormant.map(summarize),
       notes: state.notes.map(summarize),

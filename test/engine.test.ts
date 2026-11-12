@@ -355,6 +355,16 @@ describe('tickets', () => {
     expect(ball({ stateName: 'Todo Weekly', stateType: 'unstarted' })).toBe('others')
   })
 
+  it('garde en attente un ticket où ma question attend une réponse, backlog compris', () => {
+    const asked = { id: 'm1', excerpt: 'Tu valides ?', text: 'Tu valides ?', at: '2026-11-05T10:00:00Z', url: 'https://linear.test/m1' }
+    const waiting = itemFromTicket(ticket({ stateName: 'Backlog', assignedToMe: false, asked }), context)
+    expect(waiting).toMatchObject({ ball: 'others', mine: false, asked: { excerpt: 'Tu valides ?', url: 'https://linear.test/m1' } })
+    const done = itemFromTicket(ticket({ stateName: 'Backlog', asked: { ...asked, awaitsReply: false } }), context)
+    expect([done.ball, done.asked]).toEqual(['parked', undefined])
+    const view = reconcile([topic({ links: ['APP-1'] })], [waiting], [], NOW).views[0]
+    expect([view.ball, view.since]).toEqual(['others', '2026-11-05T10:00:00Z'])
+  })
+
   it('propose le diagnostic sur un ticket de bug', () => {
     const item = itemFromTicket(ticket({ stateName: 'In Progress', labels: ['Vrai bug'] }), context)
     expect(item.signals[0].action).toBe('diagnostic')

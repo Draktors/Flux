@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isMaxSession } from '../src/main/llm/claude'
 import { dailyFrom, isDailyDue, localDate, type DailyIds } from '../src/main/llm/daily'
-import { applyVerdicts, parseVerdicts } from '../src/main/llm/triage'
+import { applyAskedVerdicts, applyVerdicts, parseVerdicts } from '../src/main/llm/triage'
 import type { Ticket } from '../src/main/engine/rank'
 import { displayTitle } from '../src/renderer/src/format'
 
@@ -25,6 +25,23 @@ describe('session Claude', () => {
     {},
   ])('refuse %j', status => {
     expect(isMaxSession(status)).toBe(false)
+  })
+})
+
+describe('verdicts sur mes commentaires', () => {
+  it('écarte un commentaire qui n’attend rien et résume celui qui attend', () => {
+    const asked = (id: string) => ({ id, excerpt: 'extrait', text: 'texte', at: '2026-11-05T10:00:00Z', url: 'https://linear.test' })
+    const tickets = [{ asked: asked('m1') }, { asked: asked('m2') }, { asked: asked('m3') }, {}] as unknown as Ticket[]
+    applyAskedVerdicts(tickets, {
+      m1: { waitingOnMe: true, summary: 'Validation du design par Camille' },
+      m2: { waitingOnMe: false, summary: 'Remerciement' },
+    })
+    expect(tickets.map(ticket => [ticket.asked?.awaitsReply, ticket.asked?.excerpt])).toEqual([
+      [true, 'Validation du design par Camille'],
+      [false, 'Remerciement'],
+      [undefined, 'extrait'],
+      [undefined, undefined],
+    ])
   })
 })
 

@@ -75,6 +75,7 @@ function LooseCard({ item, selected, onSelect }: LooseCardProps) {
           <LinkIcon url={item.url} size={12} />
           {item.ref}
         </strong>
+        {item.asked && <span className="age">{waitingFor(item.asked.at)}</span>}
       </span>
       <span className="card-title">{displayTitle(item.title)}</span>
     </button>

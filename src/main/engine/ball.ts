@@ -98,6 +98,11 @@ function ballOf(topic: Topic, items: Item[], signals: Signal[], threads: ThreadV
   return 'others'
 }
 
+function oldestAsked(items: Item[]): string | null {
+  const dates = items.flatMap(item => (item.asked ? [item.asked.at] : [])).sort()
+  return dates[0] ?? null
+}
+
 function viewOf(topic: Topic, items: Item[], sessions: LiveSession[]): TopicView {
   const threads = threadViews(topic, sessions)
   const signals = items.flatMap(item => item.signals)
@@ -118,7 +123,8 @@ function viewOf(topic: Topic, items: Item[], sessions: LiveSession[]): TopicView
     rank,
     ball,
     mine: items.length === 0 || items.some(item => item.mine),
-    since: lead ? lead.since : null,
+    // Waiting on an answer to my comment counts from the comment
+    since: lead ? lead.since : oldestAsked(items),
     actions: proposedActions(topic, items, signals),
   }
 }

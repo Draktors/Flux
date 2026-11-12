@@ -125,7 +125,7 @@ Utilise uniquement les id fournis. Une source injoignable a le level « unavaila
 Lignes de Flux :
 ${dailyData(state)}
 
-Contenu de ~/.flux/snapshot.json :
+Contenu de ${SNAPSHOT_FILE} :
 ${snapshot}`
 }
 

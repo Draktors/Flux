@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 import type { ActionKind } from "../shared/types";
+import { PROFILE_DIR } from "./profile";
 import type { StoresConfig } from "./sources/stores";
 
 const HOME = homedir();
@@ -27,7 +28,8 @@ export interface Workspace {
   };
 }
 
-// Everything specific to one person or one company lives in ~/.flux/config.json, never in the repo
+// Everything specific to one person or one company lives in config.json, never in the repo:
+// ~/.flux/config.json for Pro, ~/.flux/profiles/perso/config.json for Perso
 export interface FluxConfig {
   // Name the triage prompt uses for the person Flux works for
   ownerName: string;
@@ -121,7 +123,7 @@ export function mergeConfig(overrides: Overrides): FluxConfig {
 
 export const CONFIG_FILE = process.env.FLUX_CONFIG
   ? expand(process.env.FLUX_CONFIG)
-  : join(HOME, ".flux/config.json");
+  : join(PROFILE_DIR, "config.json");
 
 function loadConfig(path: string): FluxConfig {
   if (!existsSync(path)) return DEFAULT_CONFIG;

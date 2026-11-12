@@ -294,8 +294,17 @@ input {
     display: none;
   }
 
-  .workspace-switch {
+  .workspace-switch,
+  .profile-switch {
     margin-left: 0;
+  }
+
+  .profile-switch button {
+    padding: 0 9px;
+  }
+
+  .profile-switch .profile-label {
+    display: none;
   }
 }
 
@@ -4319,6 +4328,23 @@ button.ref-pill:hover {
   letter-spacing: 0.02em;
 }
 
+/* Profil (Pro | Perso, avant les espaces) : choisir l'autre relance Flux sur ses réglages */
+
+.profile-switch {
+  margin-left: 6px;
+  padding: 3px;
+}
+
+.profile-switch button {
+  height: 26px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+
+.profile-switch button:disabled {
+  cursor: progress;
+}
+
 .settings .settings-hint {
   margin-top: -6px;
 }
@@ -4482,6 +4508,18 @@ button.ref-pill:hover {
   top: 12px;
   right: 12px;
   color: var(--text);
+}
+
+/* Étape Profils de l'accueil : une icône par profil sur chaque choix */
+
+.onboarding-profile-icons {
+  display: flex;
+  gap: 6px;
+  color: var(--text);
+}
+
+.onboarding-next-profile {
+  margin-top: 4px;
 }
 
 .onboarding-tools.compact {

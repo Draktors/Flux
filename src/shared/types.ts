@@ -1,5 +1,6 @@
 import type { CalendarName } from './calendars'
 import type { LinkMenu } from './links'
+import type { Profiles, ProfilesPatch } from './profiles'
 import type { TrackerName } from './trackers'
 
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
@@ -447,6 +448,9 @@ export interface FluxApi {
   openExternal(url: string): Promise<void>
   getSettings(): Promise<Settings>
   saveSettings(patch: SettingsPatch): Promise<void>
+  profiles(): Promise<Profiles>
+  // Relaunches Flux when the active profile changes
+  setProfiles(patch: ProfilesPatch): Promise<void>
   testNotification(): Promise<void>
   openNotificationSettings(): Promise<void>
   notificationAccess(): Promise<NotificationAccess>

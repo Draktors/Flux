@@ -11,7 +11,7 @@ import type {
 import { CONFIG } from '../config'
 import { classifyWithClaude } from '../llm/calls'
 import { CALLS_FILE } from '../paths'
-import { Granola, type GranolaAuth, type GranolaNote } from '../sources/granola'
+import { Granola, type GranolaAuth, type GranolaMeeting, type GranolaNote } from '../sources/granola'
 import type { SettingsStore } from '../store/settings'
 import { classifyByRules, rotationWorkspace, settled } from './classify'
 import { allWorkspaces } from '../workspaces'
@@ -42,6 +42,13 @@ function load(): CallsFile {
   } catch {
     return structuredClone(EMPTY)
   }
+}
+
+// A note read while the call was still going has no summary yet, and the unfiltered
+// list_meetings gives no updated_at to notice it changed: read it again until it has one
+export function needsRefresh(meeting: GranolaMeeting, known: GranolaNote | undefined): boolean {
+  if (!known || !known.summary) return true
+  return meeting.updatedAt !== null && meeting.updatedAt !== known.updatedAt
 }
 
 export function viewOf(note: GranolaNote, stored: Stored, override: CallPatch | undefined): CallView {
@@ -143,14 +150,17 @@ export class Calls {
     this.emit()
   }
 
-  sync(): Promise<void> {
-    this.syncing ??= this.run().finally(() => {
+  // full re-reads every note Granola lists: what the reload buttons ask for
+  async sync(full = false): Promise<void> {
+    // A reload pressed during the timer's sync still gets its full read afterwards
+    if (full && this.syncing) await this.syncing
+    this.syncing ??= this.run(full).finally(() => {
       this.syncing = null
     })
     return this.syncing
   }
 
-  private async run(): Promise<void> {
+  private async run(full: boolean): Promise<void> {
     if (!this.granola.hasSession) {
       if (this.status.connected) this.setStatus({ connected: false })
       return
@@ -158,15 +168,14 @@ export class Calls {
     try {
       if (!this.status.email) this.status.email = await this.granola.email().catch(() => null)
       const meetings = await this.granola.meetings()
-      const stale = meetings.filter(meeting => {
-        const known = this.file.notes[meeting.id]
-        return !known || (meeting.updatedAt !== null && meeting.updatedAt !== known.updatedAt)
-      })
+      const stale = full ? meetings : meetings.filter(meeting => needsRefresh(meeting, this.file.notes[meeting.id]))
       for (const note of await this.granola.notes(stale.map(meeting => meeting.id))) {
         // list_meetings carries updated_at only on filtered queries: keep the one we compared against
         const listed = meetings.find(meeting => meeting.id === note.id)
+        const known = this.file.notes[note.id]
         this.file.notes[note.id] = { ...note, updatedAt: note.updatedAt ?? listed?.updatedAt ?? null }
-        delete this.file.classes[note.id]
+        // Sorting again only when what it is sorted on changed, so a reload costs no Claude call
+        if (!known || known.title !== note.title || known.summary !== note.summary) delete this.file.classes[note.id]
       }
       await this.classify()
       await this.save()

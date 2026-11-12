@@ -265,10 +265,10 @@ function syncDailies(): void {
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', async () => {
-    await Promise.all([flux.refresh(), calls.sync()])
+    await Promise.all([flux.refresh(), calls.sync(true)])
   })
   ipcMain.handle('flux:refresh-all', async () => {
-    await Promise.all([flux.refreshAll(), calls.sync()])
+    await Promise.all([flux.refreshAll(), calls.sync(true)])
   })
   ipcMain.handle('flux:create-note', async (_event, text: string) => {
     if (text.trim()) await flux.addTopic(noteFromText(text, new Date()))
@@ -348,7 +348,7 @@ function registerIpc(): void {
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
   ipcMain.handle('flux:get-calls', () => calls.state())
   ipcMain.handle('flux:update-call', (_event, id: string, patch: CallPatch) => calls.update(id, patch))
-  ipcMain.handle('flux:sync-calls', () => calls.sync())
+  ipcMain.handle('flux:sync-calls', () => calls.sync(true))
   ipcMain.handle('flux:connect-granola', () => calls.connect(url => void shell.openExternal(url)))
   ipcMain.handle('flux:disconnect-granola', () => calls.disconnect())
   ipcMain.handle('flux:run-daily', () => daily.run(new Date(), flux.current()))

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Workspace } from '../src/main/config'
 import { classifyByRules, rotationWorkspace, typeFromTitle, workspaceFromText } from '../src/main/calls/classify'
+import { needsRefresh } from '../src/main/calls/service'
 import { parseMeetingList, parseMeetings } from '../src/main/sources/granola'
 
 const WORKSPACES: Workspace[] = [
@@ -86,5 +87,24 @@ describe('réponses Granola', () => {
     expect(first.participants).toEqual(['Alex Martin', 'Sam Lee'])
     expect(first.summary).toBe('# Points\n- Livraison vendredi')
     expect(second.summary).toBeNull()
+  })
+})
+
+describe('relecture des notes Granola', () => {
+  const meeting = { id: 'aaa', title: 'Rétro', at: '2026-11-10T15:10:00+01:00', url: '', updatedAt: null }
+  const note = { ...meeting, participants: [], summary: '# Points', updatedAt: '2026-11-10T16:00:00+01:00' }
+
+  it('relit une note lue avant que Granola ait écrit son résumé', () => {
+    expect(needsRefresh(meeting, { ...note, title: 'New note', summary: null })).toBe(true)
+  })
+
+  it('laisse une note complète quand la liste ne dit rien de neuf', () => {
+    expect(needsRefresh(meeting, note)).toBe(false)
+    expect(needsRefresh({ ...meeting, updatedAt: note.updatedAt }, note)).toBe(false)
+  })
+
+  it('relit une note modifiée ou inconnue', () => {
+    expect(needsRefresh({ ...meeting, updatedAt: '2026-11-12T09:00:00+01:00' }, note)).toBe(true)
+    expect(needsRefresh(meeting, undefined)).toBe(true)
   })
 })

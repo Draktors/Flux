@@ -5,7 +5,6 @@ import {
   Check,
   CircleAlert,
   Globe,
-  Keyboard,
   KeyRound,
   Layers,
   ListChecks,
@@ -18,6 +17,7 @@ import {
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
 import { WorkspacesView } from './WorkspacesView'
+import { ShortcutField } from './ShortcutField'
 import { TimePicker } from './TimePicker'
 import { AddCalendarMenu, AddTrackerMenu, TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 import { calendarInfo } from '../../shared/calendars'
@@ -376,13 +376,11 @@ export function SettingsPanel({
         </div>
 
         <label>
-          Raccourci de capture
-          <InputShell icon={Keyboard}>
-            <input
-              value={patch.captureShortcut ?? settings.captureShortcut}
-              onChange={field('captureShortcut').onChange}
-            />
-          </InputShell>
+          Raccourci nouvelle note
+          <ShortcutField
+            value={patch.captureShortcut ?? settings.captureShortcut}
+            onChange={captureShortcut => setPatch(current => ({ ...current, captureShortcut }))}
+          />
         </label>
       </div>
 

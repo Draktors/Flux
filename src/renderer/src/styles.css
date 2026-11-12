@@ -5162,3 +5162,43 @@ li.chosen .project-check {
   font-size: 11px;
   font-style: normal;
 }
+
+/* Shortcut recorder: a field you press keys into */
+.shortcut-field input {
+  cursor: pointer;
+  caret-color: transparent;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+.shortcut-field input:focus::placeholder {
+  color: var(--text);
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.shortcut-clear {
+  position: absolute;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+
+.shortcut-clear:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.settings small.shortcut-error {
+  color: var(--danger);
+}

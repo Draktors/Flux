@@ -169,7 +169,13 @@ function buildTray(): void {
       Menu.buildFromTemplate([
         { label: 'Ouvrir Flux', click: () => openMain() },
         { label: 'Wrap-up', click: () => showWrapup() },
-        { label: 'Nouvelle note', click: () => openCapture() },
+        {
+          label: 'Nouvelle note',
+          // Shown beside the item only: the global shortcut is registered on its own
+          accelerator: settings.values.captureShortcut || undefined,
+          registerAccelerator: false,
+          click: () => openCapture(),
+        },
         { label: 'Rafraîchir', click: () => void flux.refresh() },
         { type: 'separator' },
         { label: 'Quitter', role: 'quit' },
@@ -276,6 +282,21 @@ function registerIpc(): void {
   })
   ipcMain.handle('flux:open-capture', () => openCapture())
   ipcMain.handle('flux:close-capture', () => captureWindow?.close())
+  // While the settings field listens, pressing the current shortcut must not open a note
+  ipcMain.handle('flux:record-capture-shortcut', (_event, recording: boolean) => {
+    if (recording) globalShortcut.unregisterAll()
+    else registerCapture()
+  })
+  // false when another app holds the shortcut or Electron cannot read it
+  ipcMain.handle('flux:check-shortcut', (_event, accelerator: string) => {
+    try {
+      const free = globalShortcut.register(accelerator, () => undefined)
+      if (free) globalShortcut.unregister(accelerator)
+      return free
+    } catch {
+      return false
+    }
+  })
   ipcMain.handle('flux:update-topic', async (_event, id: string, patch: Partial<Topic>) => {
     const topic = requireTopic(id)
     Object.assign(topic, patch)

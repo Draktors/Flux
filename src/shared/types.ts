@@ -407,6 +407,9 @@ export interface FluxApi {
   createNote(text: string): Promise<void>
   openCapture(): Promise<void>
   closeCapture(): Promise<void>
+  // Lifts the new-note shortcut while the settings field records a new one
+  recordCaptureShortcut(recording: boolean): Promise<void>
+  checkShortcut(accelerator: string): Promise<boolean>
   updateTopic(
     id: string,
     patch: Partial<Pick<Topic, 'title' | 'body' | 'status' | 'blocked' | 'links'>>,

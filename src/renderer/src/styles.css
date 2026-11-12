@@ -3646,6 +3646,7 @@ button.ref-pill:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
 
 /* Toast */
 
@@ -4302,6 +4303,7 @@ button.ref-pill:hover {
 .onboarding-help {
   color: var(--text-3);
   font-size: 12.5px;
+}
 
 /* Espace de travail (le sélecteur WEB / APP à côté du logo) */
 

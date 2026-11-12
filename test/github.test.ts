@@ -7,13 +7,13 @@ describe('comptes GitHub', () => {
   })
 
   it('demande le token du compte choisi sans changer le compte actif', () => {
-    expect(tokenArgs('draktors')).toEqual([
+    expect(tokenArgs('alex')).toEqual([
       'auth',
       'token',
       '--hostname',
       'github.com',
       '--user',
-      'draktors',
+      'alex',
     ])
   })
 

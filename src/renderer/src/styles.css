@@ -13,6 +13,7 @@
   --radius-card: 18px;
   --radius-panel: 26px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   color-scheme: dark;
 }
 
@@ -1539,7 +1540,7 @@ button.ref-pill:hover {
   flex-direction: column;
   gap: 12px;
   width: min(1040px, calc(100vw - 48px), calc((100vh - 120px) * 16 / 9));
-  animation: spot-modal-in 0.7s var(--ease) both;
+  animation: spot-modal-in 0.3s var(--ease) both;
 }
 
 .spot-modal-head {
@@ -1588,7 +1589,7 @@ button.ref-pill:hover {
 }
 
 .spot-scene.leaving {
-  animation: spot-out var(--leave, 0.7s) var(--ease) forwards;
+  animation: spot-out 0.3s var(--ease-in) forwards;
   pointer-events: none;
 }
 
@@ -1636,7 +1637,7 @@ button.ref-pill:hover {
   background: rgba(255, 255, 255, 0.38);
   box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.7);
   opacity: 0;
-  animation: spot-click 0.6s ease-out var(--d) both;
+  animation: spot-click 0.3s var(--ease) var(--d) both;
   pointer-events: none;
 }
 
@@ -1648,8 +1649,8 @@ button.ref-pill:hover {
     0 0 0 1px rgba(255, 255, 255, 0.16);
   pointer-events: none;
   animation:
-    w-fade-in 0.6s var(--ease) var(--d) backwards,
-    w-fade-out 0.5s var(--ease) calc(var(--d) + var(--len)) forwards;
+    w-fade-in 0.3s var(--ease) var(--d) backwards,
+    w-fade-out 0.2s var(--ease-in) calc(var(--d) + var(--len)) forwards;
 }
 
 .spot-head {
@@ -1663,14 +1664,7 @@ button.ref-pill:hover {
   gap: 10px;
   text-align: center;
   pointer-events: none;
-  animation: spot-head-out 0.6s var(--ease) var(--until, 99s) forwards;
-}
-
-.spot-scene.centered .spot-head {
-  top: 0;
-  bottom: 0;
-  justify-content: center;
-  gap: 16px;
+  animation: spot-head-out 0.2s var(--ease-in) var(--until, 99s) forwards;
 }
 
 .spot-kicker {
@@ -1679,7 +1673,7 @@ button.ref-pill:hover {
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  animation: spot-rise 0.8s var(--ease) var(--d) both;
+  animation: spot-rise 0.3s var(--ease) var(--d) both;
 }
 
 .spot-headline {
@@ -1700,17 +1694,7 @@ button.ref-pill:hover {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: spot-word 1s var(--ease) var(--d) both;
-}
-
-.spot-mark {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 96px;
-  height: 96px;
-  margin-bottom: 6px;
-  animation: spot-pop 1s var(--ease) var(--d) both;
+  animation: spot-rise 0.3s var(--ease) var(--d) both;
 }
 
 .spot-captions {
@@ -1734,8 +1718,8 @@ button.ref-pill:hover {
   font-weight: 500;
   letter-spacing: -0.01em;
   animation:
-    spot-beat-in 0.7s var(--ease) var(--d) backwards,
-    spot-beat-out 0.35s var(--ease) calc(var(--d) + var(--len) - 0.35s) forwards;
+    spot-beat-in 0.3s var(--ease) var(--d) backwards,
+    spot-beat-out 0.2s var(--ease-in) calc(var(--d) + var(--len) - 0.2s) forwards;
 }
 
 /* The miniature of Flux */
@@ -1907,8 +1891,8 @@ button.ref-pill:hover {
 
 .w-tab-on.w-span {
   animation:
-    w-fade-in 0.35s var(--ease) var(--d) backwards,
-    w-fade-out 0.3s var(--ease) calc(var(--d) + var(--len)) forwards;
+    w-fade-in 0.2s var(--ease) var(--d) backwards,
+    w-fade-out 0.15s var(--ease-in) calc(var(--d) + var(--len)) forwards;
 }
 
 .w-swap {
@@ -1921,11 +1905,11 @@ button.ref-pill:hover {
 }
 
 .w-swap-out {
-  animation: w-swap-out 0.5s var(--ease) var(--d) forwards;
+  animation: w-swap-out 0.2s var(--ease-in) var(--d) forwards;
 }
 
 .w-swap-in {
-  animation: w-swap-in 0.7s var(--ease) var(--d) backwards;
+  animation: w-swap-in 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-ring {
@@ -2134,14 +2118,14 @@ button.ref-pill:hover {
   width: 380px;
   height: 34px;
   animation:
-    w-enter 0.6s var(--ease) var(--d) backwards,
+    w-enter 0.3s var(--ease) var(--d) backwards,
     w-reorder 0.8s cubic-bezier(0.65, 0, 0.25, 1) 10.4s backwards;
 }
 
 .w-row.intention.lifted {
   z-index: 2;
   animation:
-    w-enter 0.6s var(--ease) var(--d) backwards,
+    w-enter 0.3s var(--ease) var(--d) backwards,
     w-reorder 0.8s cubic-bezier(0.65, 0, 0.25, 1) 10.4s backwards,
     w-lift 1.4s var(--ease) 10.1s both;
 }
@@ -2236,11 +2220,11 @@ button.ref-pill:hover {
 }
 
 .w-box.w-check {
-  animation: w-check 0.35s var(--ease) var(--d) backwards;
+  animation: w-check 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-box.w-check::after {
-  animation: w-tick 0.35s var(--ease) var(--d) backwards;
+  animation: w-tick 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-strike {
@@ -2248,7 +2232,7 @@ button.ref-pill:hover {
   max-width: 100%;
   background: linear-gradient(currentColor, currentColor) 0 55% / 100% 1.5px no-repeat;
   color: var(--text-3);
-  animation: w-strike 0.45s var(--ease) var(--d) backwards;
+  animation: w-strike 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-panel {
@@ -2265,8 +2249,8 @@ button.ref-pill:hover {
 
 .w-panel.w-span {
   animation:
-    w-panel-in 0.6s var(--ease) var(--d) backwards,
-    w-exit 0.4s var(--ease) calc(var(--d) + var(--len)) forwards;
+    w-panel-in 0.3s var(--ease) var(--d) backwards,
+    w-exit 0.2s var(--ease-in) calc(var(--d) + var(--len)) forwards;
 }
 
 .w-panel-title {
@@ -2356,8 +2340,8 @@ button.ref-pill:hover {
 
 .w-banner.w-span {
   animation:
-    w-banner-in 0.6s var(--ease) var(--d) backwards,
-    w-exit 0.4s var(--ease) calc(var(--d) + var(--len)) forwards;
+    w-banner-in 0.3s var(--ease) var(--d) backwards,
+    w-exit 0.2s var(--ease-in) calc(var(--d) + var(--len)) forwards;
 }
 
 .w-banner-icon {
@@ -2436,7 +2420,7 @@ button.ref-pill:hover {
 
 .level-alert .w-health-dot {
   background: var(--danger);
-  animation: spot-alarm 1.6s ease-out infinite;
+  box-shadow: 0 0 0 3px rgba(255, 138, 128, 0.28);
 }
 
 .level-weak .w-health-dot {
@@ -2473,25 +2457,25 @@ button.ref-pill:hover {
 /* Timing: a "from" keyframe with a backwards fill, so the base style is the state after the change */
 
 .w-in {
-  animation: w-enter 0.6s var(--ease) var(--d) backwards;
+  animation: w-enter 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-out {
-  animation: w-exit 0.45s var(--ease) var(--d) forwards;
+  animation: w-exit 0.2s var(--ease-in) var(--d) forwards;
 }
 
 .w-span {
   animation:
-    w-enter 0.5s var(--ease) var(--d) backwards,
-    w-exit 0.4s var(--ease) calc(var(--d) + var(--len)) forwards;
+    w-enter 0.3s var(--ease) var(--d) backwards,
+    w-exit 0.2s var(--ease-in) calc(var(--d) + var(--len)) forwards;
 }
 
 .w-pop {
-  animation: w-pop 0.55s cubic-bezier(0.3, 1.5, 0.5, 1) var(--d) backwards;
+  animation: w-pop 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-bump {
-  animation: w-bump 0.45s var(--ease) var(--d) backwards;
+  animation: w-bump 0.3s var(--ease) var(--d) backwards;
 }
 
 .w-fly {
@@ -2503,12 +2487,184 @@ button.ref-pill:hover {
   animation: w-shift 0.7s cubic-bezier(0.65, 0, 0.25, 1) var(--d) backwards;
 }
 
-.w-arrive {
-  animation: w-arrive 1.4s var(--ease) var(--d) backwards;
+/* Before and after: the after window shows right of the split line, which the scene moves */
+
+.w-after {
+  position: absolute;
+  inset: 0;
+  clip-path: inset(0 0 0 960px);
+  animation: var(--split-clip, none);
 }
 
-.w-leave {
-  animation: w-leave 1.3s var(--ease) var(--d) forwards;
+.spot-split {
+  position: absolute;
+  top: 0;
+  left: -1px;
+  z-index: 8;
+  width: 2px;
+  height: 600px;
+  background: #fff;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.45);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.spot-split-knob {
+  position: absolute;
+  top: 300px;
+  left: 1px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--solid-ink);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.w-tag {
+  position: absolute;
+  bottom: 22px;
+  z-index: 7;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.w-tag.left {
+  left: 24px;
+  background: rgba(8, 10, 18, 0.72);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.22);
+  color: var(--text-2);
+}
+
+.w-tag.right {
+  right: 24px;
+  background: var(--solid);
+  color: var(--solid-ink);
+}
+
+.w-empty {
+  position: absolute;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.w-state-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.w-state {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.w-state.busy {
+  background: var(--ok);
+}
+
+.w-state.idle {
+  background: var(--waiting);
+}
+
+.w-state.paused {
+  box-shadow: inset 0 0 0 1.5px var(--text-2);
+}
+
+.w-swap-meta {
+  display: inline-grid;
+}
+
+.w-swap-meta > span {
+  grid-area: 1 / 1;
+}
+
+.w-leave-rail {
+  animation: w-leave-rail 0.3s var(--ease-in) var(--d) forwards;
+}
+
+.w-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 400px;
+}
+
+.w-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+.w-link-kind {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.w-link-kind.claude {
+  background: linear-gradient(135deg, #e3906c, #b5532f);
+  color: #fff;
+}
+
+.w-link-kind.ticket {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.w-link-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.w-link-text b {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w-link-text .w-state-line {
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+/* A row pressed by the cursor: it gives a little, and lights up for a beat */
+.w-press {
+  animation: w-press 0.3s var(--ease) var(--d) backwards;
+}
+
+.w-press::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.14);
+  opacity: 0;
+  animation: w-flash 0.3s var(--ease) var(--d) backwards;
 }
 
 .spot-controls {
@@ -2565,7 +2721,7 @@ button.ref-pill:hover {
   border-radius: var(--radius-panel);
   background: rgba(16, 18, 26, 0.92);
   box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.16);
-  animation: spot-rise 0.6s var(--ease) both;
+  animation: spot-rise 0.3s var(--ease) both;
 }
 
 .spot-list ul {
@@ -2583,7 +2739,7 @@ button.ref-pill:hover {
   gap: 12px;
   min-height: 42px;
   border-bottom: 0.5px solid var(--hairline);
-  animation: spot-rise 0.6s var(--ease) calc(0.05s * var(--n, 0)) both;
+  animation: spot-rise 0.3s var(--ease) calc(0.04s * var(--n, 0)) both;
 }
 
 
@@ -2601,64 +2757,42 @@ button.ref-pill:hover {
 @keyframes spot-modal-in {
   from {
     opacity: 0;
-    transform: scale(0.94) translateY(18px);
-    filter: blur(12px);
+    transform: scale(0.98) translateY(8px);
   }
 }
 
 @keyframes spot-out {
   to {
     opacity: 0;
-    transform: scale(1.08);
-    filter: blur(22px);
-  }
-}
-
-@keyframes spot-word {
-  from {
-    opacity: 0;
-    transform: translateY(0.45em) scale(0.96);
-    filter: blur(14px);
+    transform: scale(1.02);
   }
 }
 
 @keyframes spot-rise {
   from {
     opacity: 0;
-    transform: translateY(22px);
-    filter: blur(10px);
-  }
-}
-
-@keyframes spot-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.6);
-    filter: blur(6px);
+    transform: translateY(8px);
   }
 }
 
 @keyframes spot-head-out {
   to {
     opacity: 0;
-    transform: translateY(-16px);
-    filter: blur(12px);
+    transform: translateY(-8px);
   }
 }
 
 @keyframes spot-beat-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
-    filter: blur(8px);
+    transform: translateY(6px);
   }
 }
 
 @keyframes spot-beat-out {
   to {
     opacity: 0;
-    transform: translateY(-6px);
-    filter: blur(8px);
+    transform: translateY(-4px);
   }
 }
 
@@ -2676,20 +2810,10 @@ button.ref-pill:hover {
   }
 }
 
-@keyframes spot-alarm {
-  from {
-    box-shadow: 0 0 0 0 rgba(255, 138, 128, 0.6);
-  }
-  to {
-    box-shadow: 0 0 0 10px rgba(255, 138, 128, 0);
-  }
-}
-
 @keyframes w-enter {
   from {
     opacity: 0;
-    transform: translateY(10px);
-    filter: blur(6px);
+    transform: translateY(6px);
   }
 }
 
@@ -2697,7 +2821,6 @@ button.ref-pill:hover {
   to {
     opacity: 0;
     transform: scale(0.98);
-    filter: blur(6px);
   }
 }
 
@@ -2716,16 +2839,14 @@ button.ref-pill:hover {
 @keyframes w-swap-out {
   to {
     opacity: 0;
-    transform: translateY(-12px) scale(0.8);
-    filter: blur(5px);
+    transform: translateY(-6px) scale(0.92);
   }
 }
 
 @keyframes w-swap-in {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(0.8);
-    filter: blur(5px);
+    transform: translateY(6px) scale(0.92);
   }
 }
 
@@ -2747,7 +2868,7 @@ button.ref-pill:hover {
 @keyframes w-pop {
   from {
     opacity: 0;
-    transform: scale(0.5);
+    transform: scale(0.85);
   }
 }
 
@@ -2804,8 +2925,7 @@ button.ref-pill:hover {
 @keyframes w-panel-in {
   from {
     opacity: 0;
-    transform: translateX(28px) scale(0.97);
-    filter: blur(8px);
+    transform: translateX(16px);
   }
 }
 
@@ -2823,7 +2943,6 @@ button.ref-pill:hover {
   to {
     opacity: 0;
     transform: translate(-335px, -84px) scale(0.18);
-    filter: blur(2px);
   }
 }
 
@@ -2833,19 +2952,22 @@ button.ref-pill:hover {
   }
 }
 
-@keyframes w-arrive {
-  from {
+@keyframes w-leave-rail {
+  to {
     opacity: 0;
-    transform: translateY(40px) scale(0.92);
-    filter: blur(18px);
+    transform: translateX(32px);
   }
 }
 
-@keyframes w-leave {
-  to {
-    opacity: 0;
-    transform: scale(0.94);
-    filter: blur(20px);
+@keyframes w-press {
+  40% {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes w-flash {
+  40% {
+    opacity: 1;
   }
 }
 
@@ -4287,12 +4409,18 @@ button.ref-pill:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  :not(.spot, .spot *),
+  :not(.spot, .spot *)::before,
+  :not(.spot, .spot *)::after {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+
+  /* A scene only plays when asked from the list; it keeps the whole window in view, without zooming */
+  .spot-cam {
+    animation: none !important;
+    transform: translate(86.4px, 36px) scale(0.82) !important;
   }
 }
 

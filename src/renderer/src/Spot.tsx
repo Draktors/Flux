@@ -1,16 +1,18 @@
-import { Pause, Play, Plus, RefreshCw, Settings as Gear, Sparkles, Waves, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { ChevronsLeftRight, Pause, Play, Plus, RefreshCw, Settings as Gear, Sparkles, Waves, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Rank } from '../../shared/types'
+import { BrandIcon } from './Brand'
 import { rankStyle, tint } from './rankStyle'
 import { Stage } from './Stage'
 
 // The presentation of what is new. Each feature plays on a miniature of the Flux window,
-// 960 by 600: the whole app first, then what changed, where it is set, and a dive into it.
+// 960 by 600: what changed, where it lives, and a dive into it. A before/after scene stacks two
+// windows and a split wipes from one to the other.
 // Every timing below is in seconds from the start of its scene.
 
 const W = 960
 const H = 600
-const LEAVE_MS = 700
+const LEAVE_MS = 500
 const EASE = 'cubic-bezier(0.65, 0, 0.25, 1)'
 
 // Camera: at time t, scale s, the window point x, y at the centre of the frame
@@ -21,6 +23,8 @@ type Pt = [t: number, x: number, y: number, shown?: number]
 type Click = [t: number, x: number, y: number]
 // Spotlight: between two times, everything but this rectangle of the window dims
 type Focus = [from: number, to: number, x: number, y: number, w: number, h: number, r: number]
+// Split: at time t, the line between before (left) and after (right) sits at x, shown or not
+type Split = [t: number, x: number, shown?: number]
 
 // The window under the headline, then the window alone with room left for the captions
 const GLOBAL: View = [0.62, 480, 215]
@@ -218,7 +222,7 @@ function CardView({
     >
       <span className="w-card-ref">{card.ref}</span>
       <span className="w-card-title">{card.title}</span>
-      <span className="w-card-meta">{card.meta}</span>
+      {card.meta && <span className="w-card-meta">{card.meta}</span>}
       {children}
     </div>
   )
@@ -304,14 +308,6 @@ function Toast({ from, to, text, top = 474 }: { from: number; to: number; text: 
 }
 
 /* Scene pictures */
-
-function IntroPicture() {
-  return (
-    <Chrome specs={tabs({ File: { on: [0, 99] } })} className="w-arrive" style={d(0.1)}>
-      <QueuePage />
-    </Chrome>
-  )
-}
 
 const WRAPUP_DONE = [
   ['Étapes et bandeau vocal', 'Mergée à 09:15'],
@@ -593,12 +589,119 @@ function ReviewsPicture() {
   )
 }
 
-function OutroPicture() {
+// Before and after, one under the other: the after window shows right of the split
+function Compare({ before, after }: { before: ReactNode; after: ReactNode }) {
   return (
-    <Chrome specs={tabs({ File: { on: [0, 99] } })} className="w-leave" style={d(1.3)}>
-      <QueuePage />
+    <>
+      {before}
+      <div className="w-after">{after}</div>
+    </>
+  )
+}
+
+function Tag({ children, side }: { children: ReactNode; side: 'left' | 'right' }) {
+  return <span className={`w-tag ${side}`}>{children}</span>
+}
+
+type ThreadState = 'busy' | 'idle' | 'paused'
+
+const STATE_LABEL: Record<ThreadState, string> = {
+  busy: 'Au travail',
+  idle: 'T’attend',
+  paused: 'En pause dans Claude',
+}
+
+function State({ state }: { state: ThreadState }) {
+  return (
+    <span className="w-state-line">
+      <span className={`w-state ${state}`} />
+      {STATE_LABEL[state]}
+    </span>
+  )
+}
+
+// The topic both windows show, and the conversation Flux keeps for it
+const SESSION_TOPIC: Card = { ref: 'OFF-1048', title: 'Corriger l’enregistrement du fichier', meta: '', rank: 3 }
+const SESSION_TITLE = 'Diagnostic du bug d’enregistrement'
+
+const AFTER_RAIL: Array<{ card: Card; state: ThreadState }> = [
+  { card: { ref: 'daca#1516', title: 'Sortie de RxJS, lot 1', meta: '', rank: 1 }, state: 'busy' },
+  { card: SESSION_TOPIC, state: 'idle' },
+  { card: { ref: 'daca#1600', title: 'Débrief direct', meta: '', rank: 4 }, state: 'paused' },
+]
+
+const SESSION_HERO = {
+  rank: 3 as Rank,
+  title: 'Corriger l’enregistrement du fichier',
+  primary: 'Ouvrir dans Claude',
+  secondary: 'Voir le ticket',
+}
+
+// When Claude hands back in the before window, and when the topic leaves En cours
+const HANDS_BACK = 2.6
+const LEAVES = 3.6
+
+function SessionsPicture() {
+  const before = (
+    <Chrome specs={tabs({ 'En cours': { on: [0, 99], count: [1, 0, LEAVES] } })}>
+      {/* The card slides out of the rail first, then the page empties */}
+      <div className="w-layer w-out" style={d(LEAVES + 0.2)}>
+        <Hero chip="Agent au travail" meta="OFF-1048 · Claude travaille depuis 40 min" {...SESSION_HERO} />
+        <CardView card={SESSION_TOPIC} selected className="w-leave-rail" style={d(LEAVES, pos(640, 84))}>
+          <span className="w-card-meta w-swap-meta">
+            <span className="w-out" style={d(HANDS_BACK)}>
+              <State state="busy" />
+            </span>
+            <span className="w-in" style={d(HANDS_BACK + 0.1)}>
+              <State state="idle" />
+            </span>
+          </span>
+        </CardView>
+      </div>
+      <h3 className="w-empty w-in" style={d(LEAVES + 0.3, pos(48, 210))}>
+        Rien ici pour le moment.
+      </h3>
+      <Tag side="left">Avant</Tag>
     </Chrome>
   )
+  const after = (
+    <Chrome specs={tabs({ 'En cours': { on: [0, 99], count: 3 } })}>
+      <div className="w-layer">
+        <Hero chip="Claude t’attend" meta="OFF-1048 · conversation ouverte depuis 2 h" {...SESSION_HERO} />
+        <div className="w-links" style={pos(48, 384)}>
+          <span className="w-label">Liens</span>
+          <div className="w-link conversation w-press" style={d(9.3)}>
+            <span className="w-link-kind claude">
+              <BrandIcon brand="claude" size={13} />
+            </span>
+            <span className="w-link-text">
+              <b>{SESSION_TITLE}</b>
+              <State state="idle" />
+            </span>
+          </div>
+          <div className="w-link">
+            <span className="w-link-kind ticket">
+              <BrandIcon brand="linear" size={13} />
+            </span>
+            <span className="w-link-text">
+              <b>OFF-1048</b>
+              <span className="w-state-line">Impossible d’enregistrer le fichier</span>
+            </span>
+          </div>
+        </div>
+        {AFTER_RAIL.map(({ card, state }, index) => (
+          <CardView key={card.ref} card={card} selected={card === SESSION_TOPIC} style={pos(640, 84 + index * 72)}>
+            <span className="w-card-meta">
+              <State state={state} />
+            </span>
+          </CardView>
+        ))}
+      </div>
+      <Toast from={10.1} to={11.3} text="Conversation rouverte dans Claude" top={84} />
+      <Tag side="right">Maintenant</Tag>
+    </Chrome>
+  )
+  return <Compare before={before} after={after} />
 }
 
 /* Scenes */
@@ -616,23 +719,61 @@ interface Scene {
   cursor: Pt[]
   clicks: Click[]
   focus?: Focus[]
+  // A before/after scene: where the split line sits over time
+  split?: Split[]
   Picture: () => ReactNode
-  centered?: boolean
 }
 
 export const SCENES: Scene[] = [
   {
-    id: 'intro',
-    rank: 6,
-    ms: 4500,
-    kicker: 'Nouveau dans Flux',
-    headline: 'Ta journée, en plus court.',
-    headlineUntil: 99,
-    captions: [],
-    cam: [[0, 0.5, 480, 215], cam(1.8, GLOBAL)],
-    cursor: [],
-    clicks: [],
-    Picture: IntroPicture,
+    id: 'sessions',
+    rank: 0,
+    ms: 15000,
+    kicker: 'Sessions Claude',
+    headline: 'Tes conversations ne se perdent plus.',
+    headlineUntil: 1.4,
+    captions: [
+      [1.4, 'Avant : Claude te rend la main…'],
+      [LEAVES, '…et le sujet quitte En cours, sa conversation avec.'],
+      [5.8, 'Maintenant, il reste en cours tant qu’il est ouvert.'],
+      [7.8, 'La conversation est dans ses liens : un clic la rouvre.'],
+      [11.3, 'Au travail, t’attend ou en pause : tout ce que tu as lancé.'],
+    ],
+    cam: [
+      cam(1.2, GLOBAL),
+      cam(1.9, WHOLE),
+      cam(7.2, WHOLE),
+      [7.9, 1.5, 300, 452],
+      [9.5, 1.5, 300, 452],
+      cam(10.1, WHOLE),
+    ],
+    cursor: [
+      [0, 520, 560, 0],
+      [7.5, 520, 560, 0],
+      [7.8, 520, 560],
+      [9, 196, 430],
+      [9.5, 196, 430],
+      [10.3, 380, 540],
+      [10.6, 380, 540, 0],
+    ],
+    clicks: [[9.3, 196, 430]],
+    focus: [
+      [2, 3.5, 640, 84, 280, 66, 16],
+      [7.9, 9.5, 36, 374, 424, 140, 16],
+      [11.3, 12.4, 628, 72, 304, 234, 20],
+    ],
+    // Ends between the page and the rail: the empty page before, the three topics now
+    split: [
+      [0, 960, 0],
+      [5.7, 960, 0],
+      [5.8, 960],
+      [7, 0],
+      [7.1, 0, 0],
+      [12.4, 0, 0],
+      [12.5, 0],
+      [13.5, 620],
+    ],
+    Picture: SessionsPicture,
   },
   {
     id: 'wrapup',
@@ -690,7 +831,7 @@ export const SCENES: Scene[] = [
   },
   {
     id: 'daily',
-    rank: 2,
+    rank: 3,
     ms: 18000,
     kicker: 'Daily',
     headline: 'Le daily, en quatre blocs.',
@@ -774,20 +915,6 @@ export const SCENES: Scene[] = [
     ],
     Picture: ReviewsPicture,
   },
-  {
-    id: 'outro',
-    rank: 0,
-    ms: 6000,
-    kicker: 'Flux',
-    headline: 'Tout ce qui t’attend. Rien de plus.',
-    headlineUntil: 99,
-    captions: [],
-    cam: [cam(0, WHOLE), [1.8, 0.5, 480, 300]],
-    cursor: [],
-    clicks: [],
-    Picture: OutroPicture,
-    centered: true,
-  },
 ]
 
 function Words({ text, delay }: { text: string; delay: number }) {
@@ -820,7 +947,20 @@ function SceneView({ scene, leaving }: { scene: Scene; leaving: boolean }) {
   const total = scene.ms / 1000
   const camName = `spot-cam-${scene.id}`
   const cursorName = `spot-cursor-${scene.id}`
+  const splitName = `spot-split-${scene.id}`
+  const clipName = `spot-clip-${scene.id}`
+  const split = scene.split ?? []
   const css = [
+    split.length > 0
+      ? keyframes(
+          splitName,
+          total,
+          split.map(([t, x, shown = 1]) => [t, `transform: translateX(${x}px); opacity: ${shown};`]),
+        )
+      : '',
+    split.length > 0
+      ? keyframes(clipName, total, split.map(([t, x]) => [t, `clip-path: inset(0 0 0 ${x}px);`]))
+      : '',
     keyframes(camName, total, scene.cam.map(step => [step[0], `transform: ${camTransform(step)};`])),
     scene.cursor.length > 0
       ? keyframes(
@@ -831,10 +971,11 @@ function SceneView({ scene, leaving }: { scene: Scene; leaving: boolean }) {
       : '',
   ].join('\n')
   const Picture = scene.Picture
-  const delay = scene.centered ? 1.9 : 0.25
+  const delay = 0.25
+  const run = (name: string) => `${name} ${scene.ms}ms linear both`
   return (
     <div
-      className={`spot-scene${leaving ? ' leaving' : ''}${scene.centered ? ' centered' : ''}`}
+      className={`spot-scene${leaving ? ' leaving' : ''}`}
       style={tint(rankStyle(scene.rank))}
       aria-hidden={leaving}
     >
@@ -842,12 +983,23 @@ function SceneView({ scene, leaving }: { scene: Scene; leaving: boolean }) {
       <div className="spot-stage">
         <div
           className="spot-cam"
-          style={{
-            transform: camTransform(scene.cam[scene.cam.length - 1]),
-            animation: `${camName} ${scene.ms}ms linear both`,
-          }}
+          style={
+            {
+              transform: camTransform(scene.cam[scene.cam.length - 1]),
+              animation: run(camName),
+              // The after window of a before/after scene clips itself on this
+              '--split-clip': split.length > 0 ? run(clipName) : 'none',
+            } as CSSProperties
+          }
         >
           <Picture />
+          {split.length > 0 && (
+            <span className="spot-split" style={{ animation: run(splitName) }}>
+              <span className="spot-split-knob">
+                <ChevronsLeftRight size={14} strokeWidth={2.4} />
+              </span>
+            </span>
+          )}
           {scene.focus?.map(([from, to, x, y, w, h, r]) => (
             <span
               key={from}
@@ -859,21 +1011,13 @@ function SceneView({ scene, leaving }: { scene: Scene; leaving: boolean }) {
             <span key={t} className="spot-click" style={d(t, pos(x, y))} />
           ))}
           {scene.cursor.length > 0 && (
-            <span className="spot-cursor" style={{ animation: `${cursorName} ${scene.ms}ms linear both` }}>
+            <span className="spot-cursor" style={{ animation: run(cursorName) }}>
               <Pointer />
             </span>
           )}
         </div>
       </div>
       <header className="spot-head" style={{ '--until': `${scene.headlineUntil}s` } as CSSProperties}>
-        {scene.centered && (
-          <span className="spot-mark" style={d(1.7)}>
-            <span className="boot-orbit" />
-            <span className="boot-core glass">
-              <Waves size={30} strokeWidth={2.2} />
-            </span>
-          </span>
-        )}
         <p className="spot-kicker" style={d(delay - 0.15)}>
           {scene.kicker}
         </p>
@@ -896,8 +1040,13 @@ interface Cut {
   take: number
 }
 
-export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
-  const [cut, setCut] = useState<Cut>({ scene: start, take: 0 })
+// Plays the scenes it is given, in order, then hands back
+export function Spot({ playlist, onEnd }: { playlist: string[]; onEnd(): void }) {
+  const scenes = useMemo(
+    () => playlist.flatMap(id => SCENES.filter(scene => scene.id === id)),
+    [playlist],
+  )
+  const [cut, setCut] = useState<Cut>({ scene: 0, take: 0 })
   // The scene fading out keeps its element, so it holds its last frame instead of replaying
   const [leaving, setLeaving] = useState<Cut | null>(null)
   const [playing, setPlaying] = useState(true)
@@ -927,7 +1076,7 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
 
   const go = useCallback(
     (index: number) => {
-      if (index >= SCENES.length) {
+      if (index >= scenes.length) {
         onEnd()
         return
       }
@@ -937,7 +1086,7 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
       elapsed.current = 0
       paint(target, 0)
     },
-    [cut, onEnd, paint],
+    [cut, onEnd, paint, scenes.length],
   )
 
   useEffect(() => {
@@ -953,14 +1102,14 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
     const step = (now: number) => {
       elapsed.current += now - last
       last = now
-      const ms = SCENES[scene].ms
+      const ms = scenes[scene].ms
       paint(scene, Math.min(1, elapsed.current / ms))
       if (elapsed.current >= ms) go(scene + 1)
       else frame = requestAnimationFrame(step)
     }
     frame = requestAnimationFrame(step)
     return () => cancelAnimationFrame(frame)
-  }, [playing, scene, go, paint])
+  }, [playing, scene, go, paint, scenes])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -975,7 +1124,7 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [scene, go])
 
-  const current = SCENES[scene]
+  const current = scenes[scene]
   return (
     <div ref={root} className={`spot${playing ? '' : ' paused'}`}>
       <Stage style={rankStyle(current.rank)} drift={playing} />
@@ -983,7 +1132,7 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
       {/* The whole picture pauses on click, like a video; the button below does the same from the keyboard */}
       <div className="spot-surface" onClick={() => setPlaying(value => !value)}>
         {(leaving ? [leaving, cut] : [cut]).map(item => (
-          <SceneView key={`${item.scene}-${item.take}`} scene={SCENES[item.scene]} leaving={item !== cut} />
+          <SceneView key={`${item.scene}-${item.take}`} scene={scenes[item.scene]} leaving={item !== cut} />
         ))}
       </div>
 
@@ -998,7 +1147,7 @@ export function Spot({ start = 0, onEnd }: { start?: number; onEnd(): void }) {
           {playing ? <Pause size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
         </button>
         <div className="spot-segments">
-          {SCENES.map((entry, index) => (
+          {scenes.map((entry, index) => (
             <button
               type="button"
               key={entry.id}

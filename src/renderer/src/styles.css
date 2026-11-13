@@ -1848,7 +1848,12 @@ button.ref-pill:hover {
   white-space: nowrap;
 }
 
-.w-tab-label,
+.w-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .w-count {
   color: var(--text-3);
   font-size: 11.5px;

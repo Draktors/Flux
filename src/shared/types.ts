@@ -1,6 +1,7 @@
 import type { CallPatch, CallsState } from './calls'
 import type { CalendarName } from './calendars'
 import type { LinkMenu } from './links'
+import type { StatusOptions, StatusRules } from './statuses'
 import type { TrackerName } from './trackers'
 
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
@@ -402,6 +403,8 @@ export interface Settings {
   workspace: string | null
   // null until chosen in the app: the workspaces of config.json apply
   projects: TrackedProject[] | null
+  // What each status means, by status name, where Flux's guess is wrong
+  statusRules: StatusRules
 }
 
 export interface SettingsPatch {
@@ -419,6 +422,7 @@ export interface SettingsPatch {
   onboarded?: boolean
   githubAccount?: string | null
   projects?: TrackedProject[]
+  statusRules?: StatusRules
 }
 
 export interface GithubAccounts {
@@ -498,6 +502,8 @@ export interface FluxApi {
   checkLinearKey(key: string): Promise<CheckResult>
   checkJira(site: string, email: string, token: string): Promise<CheckResult>
   listProjects(): Promise<ProjectOptions>
+  // Every status of the tools you use, for telling Flux what each one means
+  listStatuses(): Promise<StatusOptions>
   checkCalendarUrl(url: string): Promise<CheckResult>
   runDaily(): Promise<void>
   openDaily(): Promise<void>

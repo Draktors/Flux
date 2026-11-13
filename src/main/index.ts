@@ -16,6 +16,7 @@ import {
   type WebContents,
 } from 'electron'
 import type { AppState, ProjectOptions, ProposedAction, SettingsPatch, Topic } from '../shared/types'
+import type { StatusOptions, TrackerStatus } from '../shared/statuses'
 import type { CallPatch } from '../shared/calls'
 import { FLUX_SCHEME, linkMenuEntries, parseFluxLink, type LinkMenu } from '../shared/links'
 import { Calls } from './calls/service'
@@ -30,8 +31,8 @@ import { ARCHIVE_DIR, DAILY_DIR, REPOS_DIR, THREADS_DIR, TOPICS_DIR } from './pa
 import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
 import { fetchGitActivity } from './sources/commits'
 import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
-import { fetchJira, listJiraProjects } from './sources/jira'
-import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
+import { fetchJira, listJiraProjects, listJiraStatuses } from './sources/jira'
+import { fetchCompleted, fetchLinear, listLinearStatuses, listLinearTeams } from './sources/linear'
 import { fetchStoreReviews } from './sources/stores'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
@@ -300,6 +301,57 @@ async function listProjects(): Promise<ProjectOptions> {
   }
 }
 
+// The statuses of each workspace's projects, for the Statuts page; with no workspace, the whole site
+async function listStatuses(): Promise<StatusOptions> {
+  const errors: string[] = []
+  const settled = async <T>(label: string, task: Promise<T>, fallback: T): Promise<T> =>
+    task.catch(error => {
+      errors.push(`${label} : ${(error as Error).message}`)
+      return fallback
+    })
+  const workspaces = allWorkspaces()
+  const jiraKeys = [...new Set(workspaces.flatMap(workspace => workspace.jiraProjects))]
+  const linearKeys = [...new Set(workspaces.flatMap(workspace => workspace.linearTeams ?? []))]
+  const token = settings.secret('jiraToken')
+  const email = settings.values.jiraEmail
+  const site = settings.jiraSite()
+  const linearKey = settings.secret('linearKey')
+  // Workspaces on one tool only never list the other tool's whole site
+  const wants = (keys: string[]) => workspaces.length === 0 || keys.length > 0
+  const [jira, linear] = await Promise.all([
+    settings.uses('jira') && token && email && site && wants(jiraKeys)
+      ? settled('Jira', listJiraStatuses({ site, email, token }, jiraKeys), [])
+      : [],
+    settings.uses('linear') && linearKey && wants(linearKeys)
+      ? settled('Linear', listLinearStatuses(linearKey, linearKeys), [])
+      : [],
+  ])
+  const all = [...jira, ...linear]
+  if (workspaces.length === 0) {
+    const statuses = all.map(status => ({ ...status, projects: [] }))
+    return { groups: statuses.length > 0 ? [{ id: 'all', label: 'Tous les projets', statuses }] : [], errors }
+  }
+  const groups = workspaces.flatMap(workspace => {
+    const keys = [...workspace.jiraProjects, ...(workspace.linearTeams ?? [])]
+    const byName = new Map<string, TrackerStatus>()
+    for (const status of all) {
+      const projects = status.projects.filter(project => keys.includes(project))
+      if (projects.length === 0) continue
+      const known = byName.get(status.name)
+      byName.set(status.name, {
+        ...status,
+        projects: [...new Set([...(known?.projects ?? []), ...projects])],
+      })
+    }
+    const statuses = [...byName.values()]
+    const label = workspace.short && workspace.short !== workspace.label
+      ? `${workspace.short} · ${workspace.label}`
+      : workspace.label
+    return statuses.length > 0 ? [{ id: workspace.id, label, statuses }] : []
+  })
+  return { groups, errors }
+}
+
 // Loads today's run of every workspace, so switching shows each one's daily at once
 function syncDailies(): void {
   const now = new Date()
@@ -390,6 +442,11 @@ function registerIpc(): void {
     )
     // Switching or editing workspaces only redraws from the cache; a new workspace is fetched
     // by the next tick, which reads any workspace it has no data for yet
+    // New status rules only rank the cached tickets again
+    if (Object.keys(patch).every(key => key === 'statusRules')) {
+      void flux.switchWorkspace()
+      return
+    }
     if (Object.keys(patch).every(key => key === 'workspace' || key === 'projects')) {
       if (patch.projects !== undefined) flux.forgetOtherWorkspaces()
       // The Daily tab follows the workspace: each one keeps its own run
@@ -417,6 +474,7 @@ function registerIpc(): void {
     checkJira(site, email, token),
   )
   ipcMain.handle('flux:list-projects', () => listProjects())
+  ipcMain.handle('flux:list-statuses', () => listStatuses())
   ipcMain.handle('flux:check-calendar-url', (_event, url: string) => checkCalendarUrl(url))
   ipcMain.handle('flux:get-calls', () => calls.state())
   ipcMain.handle('flux:update-call', (_event, id: string, patch: CallPatch) => calls.update(id, patch))

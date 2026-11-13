@@ -601,7 +601,7 @@ export class Flux {
         (workspace.github.noReview ?? []).map(repo => (repo.split('/').at(-1) ?? repo).toLowerCase()),
       ),
     )
-    const context = { me: me ?? '', now, noReview }
+    const context = { me: me ?? '', now, noReview, statusRules: this.settings.values.statusRules }
     return [
       ...pullRequests.map(pr => itemFromPullRequest(pr, context)),
       ...this.tickets.map(ticket => itemFromTicket(ticket, context)),

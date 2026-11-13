@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   CircleAlert,
+  Columns3,
   Globe,
   KeyRound,
   Layers,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
+import { StatusesView } from './StatusesView'
 import { WorkspacesView } from './WorkspacesView'
 import { ShortcutField } from './ShortcutField'
 import { TimePicker } from './TimePicker'
@@ -60,9 +62,15 @@ function nextTime(times: string[]): string {
   return `${String(hours).padStart(2, '0')}${last.slice(2)}`
 }
 
+function rulesSummary(count: number, trackers: number): string {
+  if (trackers === 0) return 'Connecte Jira ou Linear pour régler les statuts'
+  if (count === 0) return 'Flux devine d’après les noms'
+  return `${count} ${count > 1 ? 'statuts réglés' : 'statut réglé'} à la main`
+}
+
 type TextKey = Exclude<
   keyof SettingsPatch,
-  'onboarded' | 'githubAccount' | 'workspace' | 'trackers' | 'calendar' | 'projects' | 'wrapupTimes'
+  'onboarded' | 'githubAccount' | 'workspace' | 'trackers' | 'calendar' | 'projects' | 'wrapupTimes' | 'statusRules'
 >
 
 export function SettingsPanel({
@@ -79,7 +87,7 @@ export function SettingsPanel({
   // The selector's button opens the window straight on its Espaces page
   initialView?: 'main' | 'workspaces'
 }) {
-  const [view, setView] = useState(initialView)
+  const [view, setView] = useState<'main' | 'workspaces' | 'statuses'>(initialView)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [patch, setPatch] = useState<SettingsPatch>({})
   const [saving, setSaving] = useState(false)
@@ -166,6 +174,15 @@ export function SettingsPanel({
                 }
               : undefined
           }
+          onClose={onClose}
+          onError={onError}
+        />
+      ) : view === 'statuses' ? (
+        <StatusesView
+          onBack={() => {
+            setView('main')
+            void window.flux.getSettings().then(setSettings)
+          }}
           onClose={onClose}
           onError={onError}
         />
@@ -286,6 +303,23 @@ export function SettingsPanel({
           </button>
         </div>
         <small>Chaque projet suivi devient un espace, avec sa file, ses PR et son daily.</small>
+      </div>
+
+      <div className="field">
+        <span>Statuts</span>
+        <div className="workspaces-summary">
+          <Columns3 size={15} aria-hidden="true" />
+          <span>{rulesSummary(Object.keys(settings.statusRules ?? {}).length, trackers.length)}</span>
+          <button
+            type="button"
+            className="pill glass small"
+            disabled={trackers.length === 0}
+            onClick={() => setView('statuses')}
+          >
+            Gérer
+          </button>
+        </div>
+        <small>Ce que veut dire chaque colonne de ton board : à toi, chez les autres ou terminé.</small>
       </div>
 
       <section className="field trackers">

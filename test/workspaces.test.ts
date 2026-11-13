@@ -83,7 +83,7 @@ describe('Jira', () => {
       url: 'https://acme.atlassian.net/browse/BLOG-42',
       assignedToMe: true,
       stateType: 'started',
-      inProgress: true,
+      tracker: 'jira',
     })
     const item = itemFromTicket(ticket, { me: 'me', now: new Date('2026-11-09') })
     expect(item.ball).toBe('me')
@@ -91,8 +91,11 @@ describe('Jira', () => {
   })
 
   it('laisse la review aux autres et clôt les tickets terminés', () => {
-    const review = ticketFromJiraIssue(raw('Code Review', 'indeterminate', 'me'), 'https://x', 'me')
-    expect(review.inProgress).toBe(false)
+    const now = new Date('2026-11-09')
+    for (const status of ['Code Review', 'Dev Done']) {
+      const handed = ticketFromJiraIssue(raw(status, 'indeterminate', 'me'), 'https://x', 'me')
+      expect(itemFromTicket(handed, { me: 'me', now }).ball).toBe('others')
+    }
     const done = ticketFromJiraIssue(raw('Terminé', 'done', 'me'), 'https://x', 'me')
     expect(itemFromTicket(done, { me: 'me', now: new Date() }).terminal).toBe(true)
   })

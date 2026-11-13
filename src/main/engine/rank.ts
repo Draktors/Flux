@@ -1,5 +1,7 @@
 import type { ActionKind, Item, Rank, Signal } from '../../shared/types'
 import { CONFIG } from '../config'
+import { CLOSED_STATE_TYPES, projectOfKey, roleOf, statusKey, type StatusRules } from '../../shared/statuses'
+import type { TrackerName } from '../../shared/trackers'
 
 const BOTS = new Set(CONFIG.github.bots)
 const BLOCKED_TITLE = /\[(BLOCKED|DO NOT MERGE)\]/i
@@ -76,8 +78,8 @@ export interface Ticket {
   labels: string[]
   notices: LinearNotice[]
   asked?: AskedComment
-  // Jira: the status is one you are working in, whatever its name
-  inProgress?: boolean
+  // Which tool the ticket comes from; Linear when left out
+  tracker?: TrackerName
   // Jira: in a running sprint or not; left out where the project runs no sprint
   inSprint?: boolean
 }
@@ -87,6 +89,8 @@ export interface RankContext {
   now: Date
   // Repo names (as in app#12) where your PRs need no review
   noReview?: Set<string>
+  // What each status means, as set in the settings; Flux guesses the rest
+  statusRules?: StatusRules
 }
 
 export function ticketKeys(text: string): string[] {
@@ -288,9 +292,7 @@ export function itemFromPullRequest(pr: PullRequest, ctx: RankContext): Item {
   return { ...base, terminal: false, ball, signals }
 }
 
-export const CLOSED_STATE_TYPES = new Set(['completed', 'canceled', 'duplicate'])
-const QUESTION_STATES = new Set(['To unblock', 'To frame', 'Technical review'])
-const OWN_STATES = new Set(['Todo Today', 'In Progress', 'Personal Review'])
+export { CLOSED_STATE_TYPES }
 const BUG_LABELS = /sentry|bug/i
 
 export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
@@ -305,7 +307,14 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     ...(ticket.inSprint === undefined ? {} : { inSprint: ticket.inSprint }),
     mine: ticket.assignedToMe,
   }
-  if (CLOSED_STATE_TYPES.has(ticket.stateType)) {
+  const role = roleOf(
+    ticket.tracker ?? 'linear',
+    ticket.stateName,
+    ticket.stateType,
+    ctx.statusRules,
+    projectOfKey(ticket.key),
+  )
+  if (role === 'done') {
     return { ...base, terminal: true, ball: 'others', signals: [] }
   }
 
@@ -318,17 +327,16 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
   }
 
   if (ticket.assignedToMe) {
-    if (QUESTION_STATES.has(ticket.stateName)) {
-      const action = ticket.stateName === 'To frame' ? 'cadrage' : 'question'
-      signals.push(signal(ref, 'state-question', 3, ticket.stateName, action, ticket.updatedAt))
-    } else if (/^ready to (deploy|mep)$/i.test(ticket.stateName)) {
+    const action = ticket.labels.some(label => BUG_LABELS.test(label)) ? 'diagnostic' : 'ticket'
+    if (role === 'question') {
+      const ask = statusKey(ticket.stateName) === 'to frame' ? 'cadrage' : 'question'
+      signals.push(signal(ref, 'state-question', 3, ticket.stateName, ask, ticket.updatedAt))
+    } else if (role === 'ready') {
       signals.push(signal(ref, 'state-ready', 4, 'Prêt à déployer', 'ship', ticket.updatedAt))
-    } else if (OWN_STATES.has(ticket.stateName) || ticket.inProgress) {
-      const action = ticket.labels.some(label => BUG_LABELS.test(label)) ? 'diagnostic' : 'ticket'
+    } else if (role === 'mine') {
       signals.push(signal(ref, 'state-own', 6, ticket.stateName, action, ticket.updatedAt))
-    } else if (ticket.stateType === 'unstarted') {
+    } else if (role === 'todo') {
       // Assigned and not started yet: still yours, after what is already under way
-      const action = ticket.labels.some(label => BUG_LABELS.test(label)) ? 'diagnostic' : 'ticket'
       signals.push(signal(ref, 'state-todo', 6, ticket.stateName, action, ticket.updatedAt, ticket.updatedAt, 1))
     }
   }
@@ -336,7 +344,7 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
   // A backlog is parked work, neither waiting on anyone nor to pick up: only a request brings it back,
   // mine to someone else included
   const asked = ticket.asked && ticket.asked.awaitsReply !== false ? ticket.asked : undefined
-  const parked = ticket.stateType === 'backlog'
+  const parked = role === 'parked'
   const stale = ageDays(ticket.updatedAt, ctx.now) > DORMANT_DAYS
   const ball = signals.length > 0 ? 'me' : asked ? 'others' : parked ? 'parked' : stale ? 'dormant' : 'others'
   const line = asked ? { asked: { excerpt: asked.excerpt, at: asked.at, url: asked.url } } : {}

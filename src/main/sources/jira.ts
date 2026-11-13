@@ -1,9 +1,8 @@
 import type { Ticket } from '../engine/rank'
+import type { TrackerStatus } from '../../shared/statuses'
 
 const FIELDS = ['summary', 'status', 'assignee', 'updated', 'labels', 'issuetype']
 const PAGE_SIZE = 100
-// In-progress statuses that wait on a reviewer or a tester rather than on you
-const HANDED_OFF = /review|revue|test|recette|qa|valid|merge|deploy|mep|livr/i
 
 export interface JiraCredentials {
   site: string
@@ -23,7 +22,7 @@ export interface RawJiraIssue {
   }
 }
 
-const STATE_TYPES: Record<string, string> = {
+export const STATE_TYPES: Record<string, string> = {
   done: 'completed',
   indeterminate: 'started',
   new: 'unstarted',
@@ -44,7 +43,7 @@ export function ticketFromJiraIssue(raw: RawJiraIssue, site: string, me: string)
     updatedAt: raw.fields.updated,
     labels,
     notices: [],
-    inProgress: category === 'indeterminate' && !HANDED_OFF.test(stateName),
+    tracker: 'jira',
   }
 }
 
@@ -184,4 +183,41 @@ export async function listJiraProjects(
     startAt += result.values.length
   }
   return projects
+}
+
+interface RawJiraStatus {
+  name: string
+  statusCategory: { key: string }
+}
+
+// The statuses of the projects you follow; without any, every status of the site
+export async function listJiraStatuses(
+  credentials: JiraCredentials,
+  projects: string[],
+): Promise<TrackerStatus[]> {
+  const found = new Map<string, TrackerStatus>()
+  const add = (status: RawJiraStatus, project: string | null) => {
+    const entry = found.get(status.name) ?? {
+      tracker: 'jira' as const,
+      name: status.name,
+      type: STATE_TYPES[status.statusCategory.key] ?? 'unstarted',
+      projects: [],
+    }
+    if (project && !entry.projects.includes(project)) entry.projects.push(project)
+    found.set(status.name, entry)
+  }
+  if (projects.length === 0) {
+    const statuses = await call<RawJiraStatus[]>(credentials, '/rest/api/3/status')
+    statuses.forEach(status => add(status, null))
+  }
+  await Promise.all(
+    projects.map(async project => {
+      const types = await call<Array<{ statuses: RawJiraStatus[] }>>(
+        credentials,
+        `/rest/api/3/project/${encodeURIComponent(project)}/statuses`,
+      )
+      for (const type of types) type.statuses.forEach(status => add(status, project))
+    }),
+  )
+  return [...found.values()]
 }

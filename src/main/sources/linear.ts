@@ -1,4 +1,5 @@
 import type { CompletedTicket } from '../engine/daily'
+import type { TrackerStatus } from '../../shared/statuses'
 import { CLOSED_STATE_TYPES, type AskedComment, type LinearNotice, type Ticket } from '../engine/rank'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
@@ -283,4 +284,32 @@ export async function listLinearTeams(apiKey: string): Promise<Array<{ key: stri
   }
   if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
   return payload.data.teams.nodes
+}
+
+// The workflow states of the teams you follow; without any, of every team
+export async function listLinearStatuses(apiKey: string, teams: string[]): Promise<TrackerStatus[]> {
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: 'query { workflowStates(first: 250) { nodes { name type position team { key } } } }',
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) throw new Error(`Linear ${response.status}`)
+  const payload = (await response.json()) as {
+    data?: { workflowStates: { nodes: Array<{ name: string; type: string; position: number; team: { key: string } }> } }
+    errors?: Array<{ message: string }>
+  }
+  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
+  const found = new Map<string, TrackerStatus>()
+  const states = payload.data.workflowStates.nodes
+    .filter(state => teams.length === 0 || teams.includes(state.team.key))
+    .sort((a, b) => a.position - b.position)
+  for (const state of states) {
+    const entry = found.get(state.name) ?? { tracker: 'linear' as const, name: state.name, type: state.type, projects: [] }
+    if (!entry.projects.includes(state.team.key)) entry.projects.push(state.team.key)
+    found.set(state.name, entry)
+  }
+  return [...found.values()]
 }

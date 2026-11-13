@@ -4,6 +4,7 @@ import { safeStorage } from 'electron'
 import type { Settings, SettingsPatch, TrackedProject } from '../../shared/types'
 import { DEFAULT_WRAPUP_TIMES, normalizeTimes } from '../engine/wrapup'
 import type { CalendarName } from '../../shared/calendars'
+import type { StatusRules } from '../../shared/statuses'
 import { AVAILABLE_TRACKERS, type TrackerName } from '../../shared/trackers'
 import { CONFIG } from '../config'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
@@ -35,6 +36,8 @@ interface Stored {
   calendar: CalendarName | 'none' | null
   // null until chosen in the app: the workspaces of config.json apply
   projects: TrackedProject[] | null
+  // What each status means, where Flux's guess is wrong
+  statusRules: StatusRules
 }
 
 const DEFAULTS: Stored = {
@@ -51,6 +54,7 @@ const DEFAULTS: Stored = {
   trackers: null,
   calendar: null,
   projects: null,
+  statusRules: {},
 }
 
 function readJson<T>(path: string, fallback: T): T {

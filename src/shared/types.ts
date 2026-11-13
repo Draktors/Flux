@@ -7,7 +7,9 @@ export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
 // parked: in a Linear backlog with nothing asked of me, shown nowhere until someone asks
 export type Ball = 'me' | 'others' | 'agent' | 'dormant' | 'parked'
 export type TopicStatus = 'inbox' | 'open' | 'done'
-export type ThreadStatus = 'busy' | 'idle' | 'closed' | 'pending'
+// paused: open in Claude Desktop, its process stopped until you open it again
+// archived: archived in Claude Desktop; closed: no process and no Desktop record
+export type ThreadStatus = 'busy' | 'idle' | 'paused' | 'archived' | 'closed' | 'pending'
 export type SourceName = 'github' | 'linear' | 'jira' | 'agents' | 'calendar'
 
 export type ActionKind =
@@ -65,6 +67,10 @@ export interface ThreadRef {
   dir?: string
   // Opened in Claude Desktop, its transcript not found yet: the session id is still unknown
   pending?: boolean
+  // Claude Desktop's own id (local_…): it stays when the conversation id moves, and reopens the session
+  desktop?: string
+  // The title Claude Desktop gave the session
+  title?: string
   // Legacy cmux tab
   workspace?: string
   closing?: boolean
@@ -84,6 +90,8 @@ export interface Topic {
 
 export interface ThreadView extends ThreadRef {
   status: ThreadStatus
+  // Last turn Claude Desktop recorded, else the launch
+  activeAt: string
 }
 
 export interface ProposedAction {

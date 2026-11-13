@@ -20,11 +20,12 @@ import { RANKS } from '../../shared/ranks'
 import { CONFIG, type Workspace } from '../config'
 import { DAILY_COMMAND, DAILY_DIR, NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP_DIR } from '../paths'
 import { fetchAgents } from '../sources/agents'
+import { readDesktopSessions, syncThreads, type DesktopSession } from '../threads/sessions'
 import { fetchGithub, fetchReviewed, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
 import { allWorkspaces, githubScope, resolveWorkspace, topicVisible, workspaceInfo } from '../workspaces'
-import { compareViews, reconcile, type LiveSession } from './ball'
+import { activeViews, compareViews, reconcile, type LiveSession } from './ball'
 import {
   buildDaily,
   MAX_INTENTIONS,
@@ -141,6 +142,7 @@ export class Flux {
   // Keyed by workspace id ('' without workspaces), so switching never refetches before showing
   private caches = new Map<string, WorkspaceCache>()
   private sessions: LiveSession[] = []
+  private desktop: DesktopSession[] = []
   private meetings: Meeting[] = []
   private health = emptyHealth()
   private notifyState: NotifyState = EMPTY_NOTIFY_STATE
@@ -497,9 +499,17 @@ export class Flux {
     if (!visible && workspace?.id === this.workspace()?.id) await this.rebuild()
   }
 
+  // A launched thread gets its conversation id, then every thread follows its Desktop session
   async adoptThreads(): Promise<void> {
-    const changed = await this.hooks.adoptThreads(this.topics).catch(() => [])
-    for (const topic of changed) await this.store.save(topic)
+    this.desktop = await readDesktopSessions().catch(() => this.desktop)
+    const adopted = await this.hooks.adoptThreads(this.topics).catch(() => [])
+    const open = this.topics.filter(topic => topic.status !== 'done')
+    const synced = syncThreads(open, this.desktop)
+    for (const topic of new Set([...adopted, ...synced])) await this.store.save(topic)
+  }
+
+  desktopSessions(): DesktopSession[] {
+    return this.desktop
   }
 
   private async sweepClosingThreads(): Promise<void> {
@@ -548,7 +558,7 @@ export class Flux {
   private async rebuild(notify = false): Promise<void> {
     if (!this.synced) return
     const now = new Date()
-    const result = reconcile(this.topics, this.items(now), this.sessions, now)
+    const result = reconcile(this.topics, this.items(now), this.sessions, now, this.desktop)
 
     for (const topic of result.created) {
       this.topics.push(topic)
@@ -577,7 +587,7 @@ export class Flux {
         .sort(compareViews)
     const meeting = this.meetingStatus(now)
     const queue = pick('me')
-    const active = views.filter(view => view.ball === 'agent')
+    const active = activeViews(views)
     this.journal = observe(this.journal, views, now, source => this.health[source].ok)
     // A new daily run proposes the intentions, unless they were set by hand
     const content = this.daily.date === this.journal.date ? this.daily.content : undefined

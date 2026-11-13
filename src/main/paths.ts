@@ -20,6 +20,8 @@ export const DAILY_DIR = join(VAULT, 'daily')
 export const REPOS_DIR = CONFIG.paths.repos
 export const DAILY_COMMAND = CONFIG.paths.dailyCommand
 export const CLAUDE_PROJECTS_DIR = join(HOME, '.claude/projects')
+// Claude Desktop's record of each Code session: its own id, its conversation id, its title
+export const DESKTOP_SESSIONS_DIR = join(HOME, 'Library/Application Support/Claude/claude-code-sessions')
 
 // Each profile keeps its own state: ~/.flux for Pro, ~/.flux/profiles/perso for Perso
 export const STATE_DIR = PROFILE_DIR

@@ -8,6 +8,7 @@ import type {
   TopicView,
 } from '../../shared/types'
 import { proposedActions } from '../threads/actions'
+import { desktopOf, type DesktopSession } from '../threads/sessions'
 
 export interface LiveSession {
   session: string
@@ -57,11 +58,19 @@ function compareSignals(a: Signal, b: Signal): number {
   return a.rank - b.rank || a.weight - b.weight || a.since.localeCompare(b.since)
 }
 
-function threadViews(topic: Topic, sessions: LiveSession[]): ThreadView[] {
+// A running process says busy or idle; without one, Desktop's record says paused or archived
+function threadViews(topic: Topic, sessions: LiveSession[], desktop: DesktopSession[]): ThreadView[] {
   return topic.threads.map(thread => {
-    if (thread.pending) return { ...thread, status: 'pending' }
+    if (thread.pending) return { ...thread, status: 'pending', activeAt: thread.startedAt }
     const live = sessions.find(session => session.session === thread.session)
-    return { ...thread, status: live ? live.status : 'closed' }
+    const record = desktopOf(thread, desktop)
+    const status = live ? live.status : record ? (record.archived ? 'archived' : 'paused') : 'closed'
+    return {
+      ...thread,
+      title: record?.title || thread.title,
+      status,
+      activeAt: record?.activeAt ? new Date(record.activeAt).toISOString() : thread.startedAt,
+    }
   })
 }
 
@@ -103,8 +112,13 @@ function oldestAsked(items: Item[]): string | null {
   return dates[0] ?? null
 }
 
-function viewOf(topic: Topic, items: Item[], sessions: LiveSession[]): TopicView {
-  const threads = threadViews(topic, sessions)
+function viewOf(
+  topic: Topic,
+  items: Item[],
+  sessions: LiveSession[],
+  desktop: DesktopSession[],
+): TopicView {
+  const threads = threadViews(topic, sessions, desktop)
   const signals = items.flatMap(item => item.signals)
   if (signals.length === 0) {
     const idle = threads.find(thread => thread.status === 'idle')
@@ -134,6 +148,7 @@ export function reconcile(
   items: Item[],
   sessions: LiveSession[],
   now: Date,
+  desktop: DesktopSession[] = [],
 ): Reconciled {
   const live = topics.filter(topic => topic.status !== 'done')
   const archived = topics.filter(topic => topic.status === 'done')
@@ -191,7 +206,7 @@ export function reconcile(
       closed.push(topic.id)
       continue
     }
-    views.push(viewOf(topic, attached.filter(item => !item.terminal), sessions))
+    views.push(viewOf(topic, attached.filter(item => !item.terminal), sessions, desktop))
   }
 
   const attachedRefs = new Set(pool.flatMap(topic => topic.links))
@@ -215,4 +230,30 @@ export function compareViews(a: TopicView, b: TopicView): number {
   const right = lead(b)
   if (!left || !right) return Number(Boolean(right)) - Number(Boolean(left))
   return compareSignals(left, right)
+}
+
+// En cours: every topic that has a conversation, whoever holds the ball, until the topic closes.
+// Working first, then waiting on you, then paused, then the rest; the latest turn first within each
+const THREAD_ORDER: Record<ThreadView['status'], number> = {
+  busy: 0,
+  idle: 1,
+  paused: 2,
+  archived: 3,
+  closed: 3,
+  pending: 4,
+}
+
+function activity(view: TopicView): { order: number; at: string } {
+  const started = view.threads.filter(thread => thread.status !== 'pending')
+  const order = Math.min(...started.map(thread => THREAD_ORDER[thread.status]))
+  const at = started.map(thread => thread.activeAt).sort().at(-1) ?? ''
+  return { order, at }
+}
+
+export function activeViews(views: TopicView[]): TopicView[] {
+  return views
+    .filter(view => view.topic.status !== 'done' && view.threads.some(thread => thread.status !== 'pending'))
+    .map(view => ({ view, ...activity(view) }))
+    .sort((a, b) => a.order - b.order || b.at.localeCompare(a.at))
+    .map(entry => entry.view)
 }

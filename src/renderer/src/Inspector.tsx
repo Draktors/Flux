@@ -1,6 +1,6 @@
 import { ArrowUpRight, Check, PenLine } from 'lucide-react'
 import { useState } from 'react'
-import type { ThreadStatus, TopicView } from '../../shared/types'
+import type { ThreadStatus, ThreadView, TopicView } from '../../shared/types'
 import { BrandIcon, brandOf } from './Brand'
 import { displayTitle } from './format'
 import { Prose } from './Markdown'
@@ -9,9 +9,22 @@ import { useDraft } from './useDraft'
 const THREAD_LABEL: Record<ThreadStatus, string> = {
   busy: 'Au travail',
   idle: 'T’attend',
-  closed: 'Fermé',
+  paused: 'En pause dans Claude',
+  archived: 'Archivée dans Claude',
+  closed: 'Fermée',
   pending: 'Démarre dans Claude',
 }
+
+const THREAD_HINT: Record<ThreadStatus, string> = {
+  busy: 'Ouvrir la conversation dans Claude',
+  idle: 'Ouvrir la conversation dans Claude',
+  paused: 'Rouvrir la conversation dans Claude, qui la relance',
+  archived: 'Claude la rouvre en nouvelle session, avec tout l’historique',
+  closed: 'Reprendre la conversation dans Claude',
+  pending: 'Relancer la demande dans Claude',
+}
+
+const threadTitle = (thread: ThreadView) => thread.title || thread.name.replace(/^flux · /, '')
 
 export function Inspector({ view }: { view: TopicView }) {
   const { topic } = view
@@ -30,44 +43,33 @@ export function Inspector({ view }: { view: TopicView }) {
 
   return (
     <aside className="inspector glass-dark" key={topic.id}>
-      {view.threads.length > 0 && (
-        <section>
-          <h2>Threads</h2>
-          <ul className="rows">
-            {view.threads.map(thread => (
-              <li key={thread.session}>
-                <span className={`state ${thread.status}`} aria-hidden="true" />
-                <span className="row-text">
-                  <strong>{thread.name.replace(/^flux · /, '')}</strong>
-                  <small>
-                    {THREAD_LABEL[thread.status]}
-                    {thread.closing ? ', à fermer' : ''}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  className="pill glass small"
-                  title="Ouvrir dans Claude"
-                  onClick={() => goTo(thread.session)}
-                >
-                  <BrandIcon brand="claude" size={13} />
-                  {thread.status === 'closed' ? 'Reprendre' : 'Y aller'}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {error && (
-            <p className="hero-error" role="alert">
-              {error}
-            </p>
-          )}
-        </section>
-      )}
-
-      {view.items.length > 0 && (
+      {(view.threads.length > 0 || view.items.length > 0) && (
         <section>
           <h2>Liens</h2>
           <ul className="rows">
+            {view.threads.map(thread => (
+              <li key={thread.desktop ?? thread.session}>
+                <button
+                  type="button"
+                  className="row-link"
+                  title={THREAD_HINT[thread.status]}
+                  onClick={() => goTo(thread.desktop ?? thread.session)}
+                >
+                  <span className="kind conversation">
+                    <BrandIcon brand="claude" size={14} />
+                  </span>
+                  <span className="row-text">
+                    <strong>{threadTitle(thread)}</strong>
+                    <small className="thread-status">
+                      <span className={`state ${thread.status}`} aria-hidden="true" />
+                      {THREAD_LABEL[thread.status]}
+                      {thread.closing ? ', à fermer' : ''}
+                    </small>
+                  </span>
+                  <ArrowUpRight size={15} aria-hidden="true" className="row-go" />
+                </button>
+              </li>
+            ))}
             {view.items.map(item => (
               <li key={item.ref}>
                 <button
@@ -90,6 +92,11 @@ export function Inspector({ view }: { view: TopicView }) {
               </li>
             ))}
           </ul>
+          {error && (
+            <p className="hero-error" role="alert">
+              {error}
+            </p>
+          )}
         </section>
       )}
 

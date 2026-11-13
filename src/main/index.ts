@@ -37,6 +37,7 @@ import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
 import { adoptThreads } from './threads/desktop'
 import { goToThread, launchThread } from './threads/launch'
+import { desktopOf } from './threads/sessions'
 
 const THREAD_SETTLE_MS = 6_000
 
@@ -339,10 +340,14 @@ function registerIpc(): void {
   ipcMain.handle('flux:focus-thread', async (_event, id: string, session: string) => {
     const topic = requireTopic(id)
     await flux.adoptThreads()
-    const thread = topic.threads.find(entry => entry.session === session || entry.dir === session)
+    // The renderer names a thread by its Desktop id when it has one: the conversation id may have moved
+    const thread = topic.threads.find(
+      entry => entry.desktop === session || entry.session === session || entry.dir === session,
+    )
     if (!thread) throw new Error(`Thread introuvable : ${session}`)
     const alive = flux.liveSessions().some(entry => entry.session === thread.session)
-    const workspace = await goToThread(thread, alive)
+    const archived = desktopOf(thread, flux.desktopSessions())?.archived ?? false
+    const workspace = await goToThread(thread, alive, archived)
     if (workspace !== thread.workspace) {
       thread.workspace = workspace
       await flux.saveTopic(topic)

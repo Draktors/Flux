@@ -12,21 +12,21 @@ import {
 } from '../src/main/workspaces'
 import type { Topic, TrackedProject } from '../src/shared/types'
 
-const PP: Workspace = {
-  id: 'pp',
-  label: 'PanneauPocket',
-  short: 'PP',
-  jiraProjects: ['PP'],
-  github: { owner: 'acme', repos: ['pp-api', 'pp-app'] },
+const SHOP: Workspace = {
+  id: 'shop',
+  label: 'Boutique',
+  short: 'SHOP',
+  jiraProjects: ['SHOP'],
+  github: { owner: 'acme', repos: ['shop-api', 'shop-app'] },
 }
-const CC: Workspace = {
-  id: 'cc',
-  label: 'Communicity',
-  short: 'CC',
-  jiraProjects: ['CC'],
-  github: { owner: 'acme', repos: ['cc-web'] },
+const BLOG: Workspace = {
+  id: 'blog',
+  label: 'Blog',
+  short: 'BLOG',
+  jiraProjects: ['BLOG'],
+  github: { owner: 'acme', repos: ['blog-web'] },
 }
-const ALL = [PP, CC]
+const ALL = [SHOP, BLOG]
 
 function topic(links: string[]): Topic {
   return { id: links.join('-') || 'note', title: 't', status: 'open', links, threads: [], createdAt: '', body: '' }
@@ -34,38 +34,38 @@ function topic(links: string[]): Topic {
 
 describe('espaces de travail', () => {
   it('prend le premier espace quand rien n’est choisi', () => {
-    expect(resolveWorkspace(ALL, null)?.id).toBe('pp')
-    expect(resolveWorkspace(ALL, 'cc')?.id).toBe('cc')
-    expect(resolveWorkspace(ALL, 'disparu')?.id).toBe('pp')
-    expect(resolveWorkspace([], 'cc')).toBeNull()
+    expect(resolveWorkspace(ALL, null)?.id).toBe('shop')
+    expect(resolveWorkspace(ALL, 'blog')?.id).toBe('blog')
+    expect(resolveWorkspace(ALL, 'disparu')?.id).toBe('shop')
+    expect(resolveWorkspace([], 'blog')).toBeNull()
   })
 
   it('reconnaît les tickets et les PR de chaque espace', () => {
-    expect(owns(CC, 'CC-12')).toBe(true)
-    expect(owns(CC, 'PP-12')).toBe(false)
-    expect(owns(PP, 'pp-app#40')).toBe(true)
-    expect(owns(CC, 'pp-app#40')).toBe(false)
+    expect(owns(BLOG, 'BLOG-12')).toBe(true)
+    expect(owns(BLOG, 'SHOP-12')).toBe(false)
+    expect(owns(SHOP, 'shop-app#40')).toBe(true)
+    expect(owns(BLOG, 'shop-app#40')).toBe(false)
   })
 
   it('cache les sujets de l’autre produit et garde les notes libres', () => {
-    expect(topicVisible(topic(['PP-3', 'pp-api#9']), CC, ALL)).toBe(false)
-    expect(topicVisible(topic(['CC-3', 'cc-web#9']), CC, ALL)).toBe(true)
-    expect(topicVisible(topic([]), CC, ALL)).toBe(true)
-    expect(topicVisible(topic(['OPS-1']), CC, ALL)).toBe(true)
-    expect(topicVisible(topic(['PP-3', 'CC-4']), CC, ALL)).toBe(true)
-    expect(topicVisible(topic(['PP-3']), null, ALL)).toBe(true)
+    expect(topicVisible(topic(['SHOP-3', 'shop-api#9']), BLOG, ALL)).toBe(false)
+    expect(topicVisible(topic(['BLOG-3', 'blog-web#9']), BLOG, ALL)).toBe(true)
+    expect(topicVisible(topic([]), BLOG, ALL)).toBe(true)
+    expect(topicVisible(topic(['OPS-1']), BLOG, ALL)).toBe(true)
+    expect(topicVisible(topic(['SHOP-3', 'BLOG-4']), BLOG, ALL)).toBe(true)
+    expect(topicVisible(topic(['SHOP-3']), null, ALL)).toBe(true)
   })
 
   it('limite la recherche GitHub aux dépôts de l’espace', () => {
-    expect(githubScope(PP, '').qualifiers).toBe(' repo:acme/pp-api repo:acme/pp-app')
-    expect(githubScope({ ...CC, github: { owner: 'cc-org' } }, 'acme').qualifiers).toBe(' org:cc-org')
+    expect(githubScope(SHOP, '').qualifiers).toBe(' repo:acme/shop-api repo:acme/shop-app')
+    expect(githubScope({ ...BLOG, github: { owner: 'blog-org' } }, 'acme').qualifiers).toBe(' org:blog-org')
     expect(githubScope(null, 'acme')).toEqual({ qualifiers: ' org:acme', owner: 'acme' })
   })
 })
 
 describe('Jira', () => {
   const raw = (status: string, category: string, assignee: string | null): RawJiraIssue => ({
-    key: 'CC-42',
+    key: 'BLOG-42',
     fields: {
       summary: 'Fil d’actualité',
       updated: '2026-11-08T10:00:00.000+0100',
@@ -79,8 +79,8 @@ describe('Jira', () => {
   it('traduit un ticket en cours qui m’est assigné', () => {
     const ticket = ticketFromJiraIssue(raw('En cours', 'indeterminate', 'me'), 'https://acme.atlassian.net', 'me')
     expect(ticket).toMatchObject({
-      key: 'CC-42',
-      url: 'https://acme.atlassian.net/browse/CC-42',
+      key: 'BLOG-42',
+      url: 'https://acme.atlassian.net/browse/BLOG-42',
       assignedToMe: true,
       stateType: 'started',
       inProgress: true,
@@ -104,21 +104,21 @@ describe('Jira', () => {
   })
 
   it('ne cherche les tickets liés que dans les projets de l’espace', () => {
-    expect(jiraQuery(['CC'], ['CC-1', 'PP-2'])).toBe(
-      'project in ("CC") AND ((assignee = currentUser() AND statusCategory != Done) OR key in (CC-1)) ORDER BY updated DESC',
+    expect(jiraQuery(['BLOG'], ['BLOG-1', 'SHOP-2'])).toBe(
+      'project in ("BLOG") AND ((assignee = currentUser() AND statusCategory != Done) OR key in (BLOG-1)) ORDER BY updated DESC',
     )
   })
 })
 
 describe('projets suivis', () => {
   const projects: TrackedProject[] = [
-    { tracker: 'jira', key: 'DEVPP', name: 'PanneauPocket', repos: ['acme/pp-app'], noReview: [] },
+    { tracker: 'jira', key: 'SHOP', name: 'Boutique', repos: ['acme/shop-app'], noReview: [] },
     { tracker: 'linear', key: 'WEB', name: 'Site', repos: ['acme/web'], noReview: ['acme/web'] },
   ]
 
   it('fait un espace par projet, nommé par sa clef', () => {
-    const [pp, web] = workspacesFromProjects(projects)
-    expect(pp).toMatchObject({ id: 'devpp', short: 'DEVPP', label: 'PanneauPocket', jiraProjects: ['DEVPP'] })
+    const [shop, web] = workspacesFromProjects(projects)
+    expect(shop).toMatchObject({ id: 'shop', short: 'SHOP', label: 'Boutique', jiraProjects: ['SHOP'] })
     expect(web).toMatchObject({ id: 'web', jiraProjects: [], linearTeams: ['WEB'] })
     expect(web.github).toEqual({ repos: ['acme/web'], noReview: ['acme/web'] })
   })
@@ -126,23 +126,23 @@ describe('projets suivis', () => {
   it('rattache un ticket Linear à son équipe', () => {
     const [, web] = workspacesFromProjects(projects)
     expect(owns(web, 'WEB-12')).toBe(true)
-    expect(owns(web, 'DEVPP-12')).toBe(false)
+    expect(owns(web, 'SHOP-12')).toBe(false)
     expect(owns(web, 'web#3')).toBe(true)
   })
 
   it('part de config.json, un projet par clef, avec les dépôts complets', () => {
     const fromConfig = projectsFromWorkspaces([
       {
-        id: 'cc',
-        label: 'Communicity',
-        short: 'CC',
-        jiraProjects: ['CCM', 'COM'],
-        github: { owner: 'citopia', repos: ['cc-mobile'], noReview: ['cc-mobile'] },
+        id: 'blog',
+        label: 'Blog',
+        short: 'BLOG',
+        jiraProjects: ['BLOG', 'NEWS'],
+        github: { owner: 'acme', repos: ['blog-app'], noReview: ['blog-app'] },
       },
     ])
     expect(fromConfig).toEqual([
-      { tracker: 'jira', key: 'CCM', name: 'CCM', repos: ['citopia/cc-mobile'], noReview: ['citopia/cc-mobile'] },
-      { tracker: 'jira', key: 'COM', name: 'COM', repos: ['citopia/cc-mobile'], noReview: ['citopia/cc-mobile'] },
+      { tracker: 'jira', key: 'BLOG', name: 'BLOG', repos: ['acme/blog-app'], noReview: ['acme/blog-app'] },
+      { tracker: 'jira', key: 'NEWS', name: 'NEWS', repos: ['acme/blog-app'], noReview: ['acme/blog-app'] },
     ])
   })
 })

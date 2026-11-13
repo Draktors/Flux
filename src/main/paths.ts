@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { CONFIG } from './config'
+import { PROFILE_DIR } from './profile'
 
 const HOME = homedir()
 
@@ -19,14 +20,18 @@ export const DAILY_DIR = join(VAULT, 'daily')
 export const REPOS_DIR = CONFIG.paths.repos
 export const DAILY_COMMAND = CONFIG.paths.dailyCommand
 export const CLAUDE_PROJECTS_DIR = join(HOME, '.claude/projects')
+// Claude Desktop's record of each Code session: its own id, its conversation id, its title
+export const DESKTOP_SESSIONS_DIR = join(HOME, 'Library/Application Support/Claude/claude-code-sessions')
 
-export const STATE_DIR = join(HOME, '.flux')
+// Each profile keeps its own state: ~/.flux for Pro, ~/.flux/profiles/perso for Perso
+export const STATE_DIR = PROFILE_DIR
 export const SNAPSHOT_FILE = join(STATE_DIR, 'snapshot.json')
 export const NOTIFY_FILE = join(STATE_DIR, 'notify.json')
 export const SETTINGS_FILE = join(STATE_DIR, 'settings.json')
 export const SECRETS_FILE = join(STATE_DIR, 'secrets.json')
 export const TRIAGE_FILE = join(STATE_DIR, 'triage.json')
 export const CALLS_FILE = join(STATE_DIR, 'calls.json')
+export const TRIAGE_ASKED_FILE = join(STATE_DIR, 'triage-asked.json')
 // One wrap-up journal per day, named after its date
 export const WRAPUP_DIR = join(STATE_DIR, 'wrapup')
 // What the daily skill wrote, one file per day

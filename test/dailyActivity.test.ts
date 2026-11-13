@@ -65,6 +65,7 @@ function input(overrides: Partial<DailyInput>): DailyInput {
     active: [],
     merged: [],
     fallback: null,
+    reviews: null,
     run: { date: '2026-11-10', status: 'none' },
     skill: 'ready',
     dailyTime: '09:30',

@@ -21,7 +21,7 @@ export function renderBrief(view: TopicView, topicPath: string): string {
     for (const item of view.items) lines.push(`- ${item.ref} : ${item.title} (${item.url})`)
   }
   if (topic.body.trim()) lines.push('', '## Note', topic.body.trim())
-  const others = view.threads.filter(thread => thread.status !== 'closed')
+  const others = view.threads.filter(thread => thread.status !== 'closed' && thread.status !== 'archived')
   if (others.length > 0) {
     lines.push('', '## Threads déjà ouverts sur ce sujet')
     for (const thread of others) lines.push(`- ${thread.name} (${thread.status}, ${thread.cwd})`)

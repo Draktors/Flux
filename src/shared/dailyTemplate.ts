@@ -10,7 +10,7 @@ Flux affiche lui-même ce qui a été fait la veille (PR, reviews, tickets, comm
 3. **Pour avancer** : pour chaque bloquant, l'action qui le ferait avancer, en une phrase.
 4. **Réunions** : pour chaque réunion d'hier, ce qui en est sorti en une phrase, lu dans les notes de réunion s'il y a un outil pour ça (Granola…).
 5. **Stand-up** : deux ou trois phrases à la première personne, prêtes à être dites : fait depuis hier, prévu aujourd'hui, bloquant éventuel.
-6. **Santé prod** : une ligne par source décrite plus bas, avec le signal phare en quelques mots.
+6. **Santé prod** : une ligne par source décrite plus bas, avec le signal phare en quelques mots. Une source qui suit plusieurs chiffres les liste dans \`items\`.
 
 ## Sources de santé prod
 

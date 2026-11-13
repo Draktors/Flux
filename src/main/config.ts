@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
 import type { ActionKind } from "../shared/types";
+import { PROFILE_DIR } from "./profile";
+import type { StoresConfig } from "./sources/stores";
 
 const HOME = homedir();
 
@@ -35,7 +37,8 @@ export interface Workspace {
   };
 }
 
-// Everything specific to one person or one company lives in ~/.flux/config.json, never in the repo
+// Everything specific to one person or one company lives in config.json, never in the repo:
+// ~/.flux/config.json for Pro, ~/.flux/profiles/perso/config.json for Perso
 export interface FluxConfig {
   // Name the triage prompt uses for the person Flux works for
   ownerName: string;
@@ -70,6 +73,8 @@ export interface FluxConfig {
     // Read-only MCP tools the daily may call, and servers it must not load
     allowedTools: string[];
     disallowedTools: string[];
+    // Apps whose new store reviews the daily shows, read by Flux itself
+    stores: StoresConfig;
   };
   // Prompt per action, with {url} and {ref} placeholders; overrides the built-in wording
   prompts: Partial<Record<ActionKind, string>>;
@@ -87,7 +92,7 @@ export const DEFAULT_CONFIG: FluxConfig = {
     repos: join(HOME, "code"),
     dailyCommand: defaultDailyCommand(),
   },
-  daily: { allowedTools: [], disallowedTools: [] },
+  daily: { allowedTools: [], disallowedTools: [], stores: { country: "us", language: "en", apps: [] } },
   prompts: {},
 };
 
@@ -125,14 +130,18 @@ export function mergeConfig(overrides: Overrides): FluxConfig {
       repos: expand(paths.repos),
       dailyCommand: expand(paths.dailyCommand),
     },
-    daily: { ...DEFAULT_CONFIG.daily, ...overrides.daily },
+    daily: {
+      ...DEFAULT_CONFIG.daily,
+      ...overrides.daily,
+      stores: { ...DEFAULT_CONFIG.daily.stores, ...overrides.daily?.stores },
+    },
     prompts: { ...overrides.prompts },
   };
 }
 
 export const CONFIG_FILE = process.env.FLUX_CONFIG
   ? expand(process.env.FLUX_CONFIG)
-  : join(HOME, ".flux/config.json");
+  : join(PROFILE_DIR, "config.json");
 
 function loadConfig(path: string): FluxConfig {
   if (!existsSync(path)) return DEFAULT_CONFIG;

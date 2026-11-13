@@ -1,13 +1,44 @@
-import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ArrowUpRight, Check, Hand, Hourglass, ListChecks, LockOpen, MessageCircleQuestion } from 'lucide-react'
+import { useEffect, useState, type MouseEvent } from 'react'
+import type { LinkMenu } from '../../shared/links'
 import { RANKS } from '../../shared/ranks'
-import type { Item, ProposedAction, TopicView } from '../../shared/types'
+import type { AskedLine, Item, ProposedAction, TopicView } from '../../shared/types'
 import { BrandIcon, LinkIcon } from './Brand'
 import { displayTitle, markedBlocked, splitTitle, waitingFor } from './format'
+import { menuOfItem, menuOfView, showMenu } from './navigation'
 import { rankStyle } from './rankStyle'
 import { useDraft } from './useDraft'
 
 const MAX_SIGNALS = 3
+
+// My comments still waiting for an answer, each opening the comment itself
+function AskedList({ lines }: { lines: AskedLine[] }) {
+  if (lines.length === 0) return null
+  return (
+    <ul className="hero-asked">
+      {lines.map(line => (
+        <li key={line.url}>
+          <button type="button" className="hero-asked-link" onClick={() => void window.flux.openExternal(line.url)}>
+            <MessageCircleQuestion size={15} aria-hidden="true" />
+            <span>
+              {line.excerpt}
+              <span className="hero-asked-age"> · ma question, sans réponse depuis {waitingFor(line.at)}</span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// Text being edited or selected keeps the system menu
+function heroMenu(event: MouseEvent<HTMLElement>, menu: LinkMenu): void {
+  const target = event.target as HTMLElement
+  if (target.closest('textarea, input') || window.getSelection()?.toString()) return
+  showMenu(event, menu)
+}
+
+const askedLines = (items: Item[]): AskedLine[] => items.flatMap(item => (item.asked ? [item.asked] : []))
 
 interface HeroProps {
   view: TopicView
@@ -51,7 +82,7 @@ export function Hero({ view, position }: HeroProps) {
     action.prompt ? <BrandIcon brand="claude" size={size} /> : <LinkIcon url={action.url} size={size} />
 
   return (
-    <section className="hero" key={topic.id}>
+    <section className="hero" key={topic.id} onContextMenu={event => heroMenu(event, menuOfView(view))}>
       <p className="hero-rank">
         <span className="tile">
           <Icon size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -120,6 +151,8 @@ export function Hero({ view, position }: HeroProps) {
           )}
         </ul>
       )}
+
+      {view.signals.length === 0 && <AskedList lines={askedLines(view.items)} />}
 
       <div className="hero-actions">
         {primary && (
@@ -221,7 +254,7 @@ export function Hero({ view, position }: HeroProps) {
 export function LooseHero({ item }: { item: Item }) {
   const where = item.kind === 'pr' ? 'Ouvrir sur GitHub' : 'Ouvrir dans Linear'
   return (
-    <section className="hero" key={item.ref}>
+    <section className="hero" key={item.ref} onContextMenu={event => heroMenu(event, menuOfItem(item))}>
       <p className="hero-rank">
         <span className="tile">
           <Hourglass size={15} strokeWidth={2.2} aria-hidden="true" />
@@ -238,6 +271,8 @@ export function LooseHero({ item }: { item: Item }) {
         <span>{item.kind === 'pr' ? 'Pull request' : 'Ticket'}</span>
         {item.branch && <span>{item.branch}</span>}
       </p>
+
+      <AskedList lines={askedLines([item])} />
 
       <div className="hero-actions">
         <button

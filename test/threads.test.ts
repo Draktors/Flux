@@ -34,6 +34,7 @@ const view: TopicView = {
       branch: 'feature/app-1005',
       terminal: false,
       ball: 'me',
+      mine: true,
       signals: [],
     },
   ],
@@ -51,6 +52,7 @@ const view: TopicView = {
   threads: [],
   rank: 1,
   ball: 'me',
+  mine: true,
   since: '2026-11-04T10:00:00Z',
   actions: [],
 }

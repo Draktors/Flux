@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { safeStorage } from 'electron'
 import type { Settings, SettingsPatch, TrackedProject } from '../../shared/types'
+import { DEFAULT_WRAPUP_TIMES, normalizeTimes } from '../engine/wrapup'
 import type { CalendarName } from '../../shared/calendars'
 import { AVAILABLE_TRACKERS, type TrackerName } from '../../shared/trackers'
 import { CONFIG } from '../config'
-import { DEFAULT_WRAPUP_TIMES, normalizeTimes } from '../engine/wrapup'
 import { SECRETS_FILE, SETTINGS_FILE } from '../paths'
 import {
   allWorkspaces,

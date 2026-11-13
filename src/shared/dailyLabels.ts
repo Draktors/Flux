@@ -1,4 +1,4 @@
-import type { HealthLevel, Rank, YesterdayKind } from './types'
+import type { HealthLevel, Rank, Store, YesterdayKind } from './types'
 
 export const YESTERDAY_LABEL: Record<YesterdayKind, string> = {
   merged: 'Mergée',
@@ -30,3 +30,12 @@ export function countLabel(rank: Rank, count: number): string {
 }
 
 export const HEALTH_LEVELS: HealthLevel[] = ['ok', 'weak', 'alert', 'positive', 'unavailable']
+
+export const STORE_LABEL: Record<Store, string> = {
+  'app-store': 'App Store',
+  'play-store': 'Google Play',
+}
+
+export function stars(rating: number): string {
+  return '★'.repeat(rating) + '☆'.repeat(5 - rating)
+}

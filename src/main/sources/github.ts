@@ -373,3 +373,4 @@ export async function fetchReviewed(
     return [{ ref: prRef(node.repository.name, node.number), title: node.title, url: node.url, reviewedAt: at }]
   })
 }
+

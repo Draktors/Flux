@@ -3,7 +3,7 @@ import { mkdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { YESTERDAY_LABEL, HEALTH_LEVELS } from '../../shared/dailyLabels'
 import { RANKS } from '../../shared/ranks'
-import type { AppState, DailyContent, DailyRun, HealthLevel, HealthLine } from '../../shared/types'
+import type { AppState, DailyContent, DailyRun, HealthItem, HealthLevel, HealthLine } from '../../shared/types'
 import { CONFIG, type Workspace } from '../config'
 import { MAX_INTENTIONS, PROPOSED_INTENTIONS } from '../engine/daily'
 import { DAILY_COMMAND, DAILY_STATE_DIR, SNAPSHOT_FILE } from '../paths'
@@ -14,6 +14,7 @@ const MODEL = 'claude-sonnet-5-5'
 const BUDGET_USD = '2'
 const TIMEOUT_MS = 10 * 60_000
 const MAX_HEALTH_LINES = 8
+const MAX_HEALTH_ITEMS = 8
 const MAX_TEXT = 140
 const MAX_STANDUP = 600
 
@@ -106,7 +107,8 @@ export const DAILY_CONTRACT = `{
   "health": [
     { "source": "Sentry", "level": "ok | weak | alert | positive | unavailable",
       "text": "le signal phare en quelques mots", "detail": "le détail, seulement en alert, sinon null",
-      "url": "https://… vers la vue, ou null" }
+      "url": "https://… vers la vue, ou null",
+      "items": [{ "label": "ce qui est suivi, un event par exemple", "value": "son chiffre et sa tendance" }] }
   ]
 }`
 
@@ -150,7 +152,7 @@ Utilise uniquement les id fournis. Une source injoignable a le level « unavaila
 Lignes de Flux :
 ${dailyData(state)}
 
-Contenu de ~/.flux/snapshot.json :
+Contenu de ${SNAPSHOT_FILE} :
 ${snapshot}`
 }
 
@@ -171,6 +173,19 @@ function knownEntries(value: unknown, known: Set<string>): Record<string, string
   return entries
 }
 
+function healthItems(value: unknown): HealthItem[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .flatMap(item => {
+      if (!item || typeof item !== 'object') return []
+      const raw = item as Record<string, unknown>
+      const label = cleanText(raw.label, 60)
+      const figure = cleanText(raw.value, 80)
+      return label && figure ? [{ label, value: figure }] : []
+    })
+    .slice(0, MAX_HEALTH_ITEMS)
+}
+
 function healthLine(value: unknown): HealthLine | null {
   if (!value || typeof value !== 'object') return null
   const raw = value as Record<string, unknown>
@@ -179,7 +194,8 @@ function healthLine(value: unknown): HealthLine | null {
   const level = raw.level as HealthLevel
   if (!source || !text || !HEALTH_LEVELS.includes(level)) return null
   const url = typeof raw.url === 'string' && /^https?:\/\//.test(raw.url) ? raw.url : null
-  return { source, level, text, detail: level === 'alert' ? cleanText(raw.detail) : null, url }
+  const detail = level === 'alert' ? cleanText(raw.detail) : null
+  return { source, level, text, detail, url, items: level === 'unavailable' ? [] : healthItems(raw.items) }
 }
 
 // The answer as Flux keeps it: unknown ids, bad levels and stray text are dropped

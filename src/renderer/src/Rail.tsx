@@ -1,9 +1,10 @@
-import { Bot } from 'lucide-react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { Bot, MessagesSquare, UserRound, type LucideIcon } from 'lucide-react'
+import { Fragment, useEffect, useRef, type ReactNode } from 'react'
 import { RANKS } from '../../shared/ranks'
 import type { Item, Rank, TopicView } from '../../shared/types'
 import { LinkIcon } from './Brand'
 import { displayTitle, waitingFor } from './format'
+import { looseId, menuOfItem, menuOfView, showMenu } from './navigation'
 import { rankStyle, tint } from './rankStyle'
 
 // « Mes sujets »
@@ -46,6 +47,7 @@ function Card({ view, selected, fresh, onSelect }: CardProps) {
       aria-current={selected ? 'true' : undefined}
       style={tint(rankStyle(view.rank))}
       onClick={() => onSelect(view.topic.id)}
+      onContextMenu={event => showMenu(event, menuOfView(view))}
     >
       {fresh && <span className="badge">Nouveau</span>}
       <span className="card-head">
@@ -58,8 +60,6 @@ function Card({ view, selected, fresh, onSelect }: CardProps) {
     </button>
   )
 }
-
-export const looseId = (item: Item) => `loose:${item.ref}`
 
 interface LooseCardProps {
   item: Item
@@ -84,6 +84,7 @@ function LooseCard({ item, selected, onSelect }: LooseCardProps) {
       aria-current={selected ? 'true' : undefined}
       style={tint(rankStyle(null))}
       onClick={() => onSelect(looseId(item))}
+      onContextMenu={event => showMenu(event, menuOfItem(item))}
     >
       <span className="card-head">
         <strong className="card-link">
@@ -91,6 +92,7 @@ function LooseCard({ item, selected, onSelect }: LooseCardProps) {
           {item.ref}
         </strong>
         <StateTag state={item.state} />
+        {item.asked && <span className="age">{waitingFor(item.asked.at)}</span>}
       </span>
       <span className="card-title">{displayTitle(item.title)}</span>
     </button>
@@ -129,23 +131,23 @@ function SprintSwitch({ scope }: { scope: SprintScope }) {
   )
 }
 
-function Group({
-  label,
-  rank,
-  extra,
-  children,
-}: {
+interface GroupProps {
   label?: string
   rank?: Rank
+  icon?: LucideIcon
+  hint?: string
+  // Shown after the label, like the Sprint / Tout switch
   extra?: ReactNode
   children: ReactNode
-}) {
+}
+
+function Group({ label, rank, icon, hint, extra, children }: GroupProps) {
   const style = rank === undefined ? null : rankStyle(rank)
-  const Icon = style?.icon
+  const Icon = icon ?? style?.icon
   return (
     <div className="rail-group">
       {label && (
-        <h2 style={style ? tint(style) : undefined}>
+        <h2 style={style ? tint(style) : undefined} title={hint}>
           {Icon && <Icon size={13} strokeWidth={2.4} aria-hidden="true" />}
           {label}
           {extra}
@@ -156,10 +158,38 @@ function Group({
   )
 }
 
+export interface OwnerGroup {
+  label: string
+  hint: string
+  icon: LucideIcon
+  views: TopicView[]
+  loose: Item[]
+}
+
+// Waiting splits my own work from the work of others I take part in: they do not weigh the same
+export function ownerGroups(views: TopicView[], loose: Item[]): OwnerGroup[] {
+  return [
+    {
+      label: 'Mon travail',
+      hint: 'Mes PR et mes tickets, en attente de quelqu’un',
+      icon: UserRound,
+      views: views.filter(view => view.mine),
+      loose: loose.filter(item => item.mine),
+    },
+    {
+      label: 'Mes contributions',
+      hint: 'Les PR et tickets des autres que j’ai relus ou commentés',
+      icon: MessagesSquare,
+      views: views.filter(view => !view.mine),
+      loose: loose.filter(item => !item.mine),
+    },
+  ].filter(group => group.views.length + group.loose.length > 0)
+}
+
 interface RailProps {
   views: TopicView[]
   loose?: Item[]
-  grouped: boolean
+  grouping: 'rank' | 'owner' | 'none'
   // The Sprint / Tout switch beside « Mes sujets », once Jira tells which tickets are in it
   sprint?: SprintScope
   selected: string | null
@@ -167,7 +197,7 @@ interface RailProps {
   onSelect(id: string): void
 }
 
-export function Rail({ views, loose = [], grouped, sprint, selected, isFresh, onSelect }: RailProps) {
+export function Rail({ views, loose = [], grouping, sprint, selected, isFresh, onSelect }: RailProps) {
   const track = useRef<HTMLDivElement>(null)
   const card = (view: TopicView) => (
     <Card
@@ -177,6 +207,9 @@ export function Rail({ views, loose = [], grouped, sprint, selected, isFresh, on
       fresh={isFresh(view)}
       onSelect={onSelect}
     />
+  )
+  const looseCard = (item: Item) => (
+    <LooseCard key={item.ref} item={item} selected={looseId(item) === selected} onSelect={onSelect} />
   )
   const shown = [...new Set(views.map(view => view.rank))].filter((rank): rank is Rank => rank !== null)
   // A sprint with nothing of yours left keeps its header, so « Tout » stays at hand
@@ -194,7 +227,7 @@ export function Rail({ views, loose = [], grouped, sprint, selected, isFresh, on
           }
         }}
       >
-        {grouped ? (
+        {grouping === 'rank' &&
           ranks.map(rank => (
             <Group
               key={rank}
@@ -207,22 +240,22 @@ export function Rail({ views, loose = [], grouped, sprint, selected, isFresh, on
                 <p className="rail-empty">Rien d’autre pour toi dans le sprint.</p>
               )}
             </Group>
-          ))
-        ) : (
-          <Group>{views.map(card)}</Group>
-        )}
-        {loose.length > 0 && (
-          <Group label="En attente">
-            {loose.map(item => (
-              <LooseCard
-                key={item.ref}
-                item={item}
-                selected={looseId(item) === selected}
-                onSelect={onSelect}
-              />
-            ))}
-          </Group>
-        )}
+          ))}
+        {grouping === 'owner' &&
+          ownerGroups(views, loose).map((group, index) => (
+            <Fragment key={group.label}>
+              {index > 0 && <span className="rail-divider" aria-hidden="true" />}
+              <Group
+                label={`${group.label} · ${group.views.length + group.loose.length}`}
+                icon={group.icon}
+                hint={group.hint}
+              >
+                {group.views.map(card)}
+                {group.loose.map(looseCard)}
+              </Group>
+            </Fragment>
+          ))}
+        {grouping === 'none' && <Group>{views.map(card)}</Group>}
       </div>
     </nav>
   )

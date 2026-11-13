@@ -7,7 +7,8 @@ export interface ToastMessage {
   tone: 'ok' | 'error'
 }
 
-const VISIBLE_MS = 2600
+// Long enough to read a ref that a flux:// link no longer finds
+const VISIBLE_MS = 4000
 const LEAVE_MS = 180
 
 export function Toast({ toast, onDone }: { toast: ToastMessage; onDone(): void }) {

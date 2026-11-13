@@ -12,6 +12,7 @@ import type {
   SourceHealth,
   SourceName,
   SourceProgress,
+  StoreFeed,
   Topic,
   TopicView,
 } from '../../shared/types'
@@ -21,6 +22,7 @@ import { DAILY_COMMAND, DAILY_DIR, NOTIFY_FILE, SNAPSHOT_FILE, STATE_DIR, WRAPUP
 import { workspaceFromText } from '../calls/classify'
 import { fetchAgents } from '../sources/agents'
 import type { GitActivity } from '../sources/commits'
+import { readDesktopSessions, syncThreads, type DesktopSession } from '../threads/sessions'
 import { fetchGithub, fetchReviewed, type GithubSnapshot } from '../sources/github'
 import type { SettingsStore } from '../store/settings'
 import type { TopicStore } from '../store/topics'
@@ -32,7 +34,7 @@ import {
   topicVisible,
   workspaceInfo,
 } from '../workspaces'
-import { compareViews, reconcile, type LiveSession } from './ball'
+import { activeViews, compareViews, reconcile, type LiveSession } from './ball'
 import {
   buildDaily,
   MAX_INTENTIONS,
@@ -62,6 +64,7 @@ import {
 const TICK_MS = 60_000
 // A meeting added a few minutes ahead still shows in time
 const CALENDAR_EVERY_TICKS = 5
+const REVIEWS_EVERY_TICKS = 30
 // The workspaces you are not looking at refresh every 5 minutes, so a switch shows warm data
 const BACKGROUND_EVERY_TICKS = 5
 
@@ -85,6 +88,10 @@ export interface FluxHooks {
   fetchJira(keys: string[], projects: string[]): Promise<Ticket[] | null>
   // My tickets completed since an ISO date; empty without Linear
   fetchCompleted(since: string): Promise<CompletedTicket[]>
+  // The latest store reviews of the apps followed; null when none is
+  fetchReviews(): Promise<StoreFeed | null>
+  // Jira tickets of the active workspace; null when Jira is not configured
+  fetchJira(keys: string[], projects: string[]): Promise<Ticket[] | null>
   fetchMeetings(): Promise<Meeting[] | null>
   // What the daily reads besides the queue: your commits and the meetings already over
   fetchGitActivity(since: Date): Promise<GitActivity | null>
@@ -159,6 +166,8 @@ function summarize(view: TopicView) {
     since: view.since,
     url: view.items[0]?.url ?? null,
     blocked: view.topic.blocked ?? null,
+    mine: view.mine,
+    asked: view.items.find(item => item.asked)?.asked?.excerpt ?? null,
   }
 }
 
@@ -168,6 +177,7 @@ export class Flux {
   // Keyed by workspace id ('' without workspaces), so switching never refetches before showing
   private caches = new Map<string, WorkspaceCache>()
   private sessions: LiveSession[] = []
+  private desktop: DesktopSession[] = []
   private meetings: Meeting[] = []
   private health = emptyHealth()
   private notifyState: NotifyState = EMPTY_NOTIFY_STATE
@@ -180,6 +190,7 @@ export class Flux {
   // Past days do not change: their journals are read once
   private pastJournals = new Map<string, WrapupJournal | null>()
   protected fallback: DailyFallback | null = null
+  private reviews: StoreFeed | null = null
   private fallbackDay = ''
   private state: AppState | null = null
   private timer: NodeJS.Timeout | null = null
@@ -473,6 +484,14 @@ export class Flux {
         void this.fetchWorkspace(other, account, now, false)
       }
 
+      if (this.tickCount % REVIEWS_EVERY_TICKS === 0) {
+        await this.hooks
+          .fetchReviews()
+          .then(feed => {
+            this.reviews = feed
+          })
+          .catch(() => undefined)
+      }
       if (this.calendarDue || this.tickCount % CALENDAR_EVERY_TICKS === 0) {
         this.calendarDue = false
         await this.hooks
@@ -550,9 +569,17 @@ export class Flux {
     if (!visible && workspace?.id === this.workspace()?.id) await this.rebuild()
   }
 
+  // A launched thread gets its conversation id, then every thread follows its Desktop session
   async adoptThreads(): Promise<void> {
-    const changed = await this.hooks.adoptThreads(this.topics).catch(() => [])
-    for (const topic of changed) await this.store.save(topic)
+    this.desktop = await readDesktopSessions().catch(() => this.desktop)
+    const adopted = await this.hooks.adoptThreads(this.topics).catch(() => [])
+    const open = this.topics.filter(topic => topic.status !== 'done')
+    const synced = syncThreads(open, this.desktop)
+    for (const topic of new Set([...adopted, ...synced])) await this.store.save(topic)
+  }
+
+  desktopSessions(): DesktopSession[] {
+    return this.desktop
   }
 
   private async sweepClosingThreads(): Promise<void> {
@@ -601,7 +628,7 @@ export class Flux {
   private async rebuild(notify = false): Promise<void> {
     if (!this.synced) return
     const now = new Date()
-    const result = reconcile(this.topics, this.items(now), this.sessions, now)
+    const result = reconcile(this.topics, this.items(now), this.sessions, now, this.desktop)
 
     for (const topic of result.created) {
       this.topics.push(topic)
@@ -630,7 +657,7 @@ export class Flux {
         .sort(compareViews)
     const meeting = this.meetingStatus(now)
     const queue = pick('me')
-    const active = views.filter(view => view.ball === 'agent')
+    const active = activeViews(views)
     this.journal = observe(this.journal, views, now, source => this.health[source].ok)
     // A new daily run proposes the intentions, unless they were set by hand
     const run = this.dailyRun()
@@ -678,6 +705,7 @@ export class Flux {
         active,
         merged: this.cache().github?.merged ?? [],
         fallback: this.fallback,
+        reviews: this.reviews,
         run,
         skill: existsSync(DAILY_COMMAND) ? 'ready' : 'missing',
         dailyTime: this.settings.values.dailyTime,
@@ -767,7 +795,13 @@ export class Flux {
       active: state.active.map(summarize),
       waitingOnOthers: [
         ...state.waiting.map(summarize),
-        ...state.loose.map(item => ({ title: item.title, links: [item.ref], url: item.url })),
+        ...state.loose.map(item => ({
+          title: item.title,
+          links: [item.ref],
+          url: item.url,
+          mine: item.mine,
+          asked: item.asked?.excerpt ?? null,
+        })),
       ],
       dormant: state.dormant.map(summarize),
       notes: state.notes.map(summarize),

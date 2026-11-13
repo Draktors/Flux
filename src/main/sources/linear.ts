@@ -1,5 +1,5 @@
 import type { CompletedTicket } from '../engine/daily'
-import { CLOSED_STATE_TYPES, type LinearNotice, type Ticket } from '../engine/rank'
+import { CLOSED_STATE_TYPES, type AskedComment, type LinearNotice, type Ticket } from '../engine/rank'
 
 const ENDPOINT = 'https://api.linear.app/graphql'
 const MENTION_TYPES = new Set(['issueCommentMention', 'issueMention'])
@@ -7,6 +7,9 @@ const COMMENT_TYPES = new Set(['issueNewComment'])
 const AUTOMATED_BODY = /^\s*🗄️?\s*Archived in Sentry/u
 const EXCERPT_LENGTH = 110
 const TRIAGE_TEXT_LENGTH = 1_500
+// My comments older than this no longer wait on anyone
+const ASKED_WINDOW = '-P14D'
+const ASKED_COUNT = 50
 
 const ISSUE_FIELDS = `
   identifier title url updatedAt
@@ -92,11 +95,51 @@ export function noticeFromNotification(raw: RawNotification, now: Date): LinearN
   }
 }
 
+export interface RawOwnComment {
+  id: string
+  body: string
+  url: string
+  createdAt: string
+  resolvedAt: string | null
+  parent: { resolvedAt: string | null } | null
+  issue:
+    | (RawIssue & { comments: { nodes: Array<{ createdAt: string; user: { isMe: boolean } | null }> } })
+    | null
+}
+
+// My latest comment per open ticket, when no one else wrote on the ticket since and its thread is open
+export function askedComments(comments: RawOwnComment[]): Array<{ issue: RawIssue; asked: AskedComment }> {
+  const latest = new Map<string, RawOwnComment>()
+  for (const comment of comments) {
+    const key = comment.issue?.identifier
+    const previous = key ? latest.get(key) : undefined
+    if (key && (!previous || previous.createdAt < comment.createdAt)) latest.set(key, comment)
+  }
+  return [...latest.values()].flatMap(comment => {
+    const issue = comment.issue
+    if (!issue || CLOSED_STATE_TYPES.has(issue.state.type)) return []
+    if (comment.resolvedAt || comment.parent?.resolvedAt || AUTOMATED_BODY.test(comment.body)) return []
+    const answered = issue.comments.nodes.some(
+      other => other.user !== null && !other.user.isMe && other.createdAt > comment.createdAt,
+    )
+    if (answered) return []
+    const asked: AskedComment = {
+      id: comment.id,
+      excerpt: excerpt(comment.body),
+      text: comment.body.slice(0, TRIAGE_TEXT_LENGTH),
+      at: comment.createdAt,
+      url: comment.url,
+    }
+    return [{ issue, asked }]
+  })
+}
+
 export function mergeTickets(
   assigned: RawIssue[],
   linked: RawIssue[],
   notifications: RawNotification[],
   now: Date,
+  own: RawOwnComment[] = [],
 ): Ticket[] {
   const tickets = new Map<string, Ticket>()
   for (const issue of [...assigned, ...linked]) {
@@ -109,6 +152,10 @@ export function mergeTickets(
     const ticket = tickets.get(issue.identifier) ?? ticketFromIssue(issue)
     if (!ticket.notices.some(existing => existing.id === notice.id)) ticket.notices.push(notice)
     tickets.set(issue.identifier, ticket)
+  }
+  for (const { issue, asked } of askedComments(own)) {
+    const ticket = tickets.get(issue.identifier) ?? ticketFromIssue(issue)
+    tickets.set(issue.identifier, { ...ticket, asked })
   }
   return [...tickets.values()]
 }
@@ -155,35 +202,48 @@ export async function fetchLinear(apiKey: string, keys: string[]): Promise<Ticke
       }
     }
   }`
-  const data = await linearQuery<{
-    viewer: { assignedIssues: { nodes: RawIssue[] } }
-    linked?: { nodes: RawIssue[] }
-    notifications: { nodes: RawNotification[] }
-  }>(apiKey, query, { filter, withLinked: filter !== null })
+  const [data, own] = await Promise.all([
+    linearQuery<{
+      viewer: { assignedIssues: { nodes: RawIssue[] } }
+      linked?: { nodes: RawIssue[] }
+      notifications: { nodes: RawNotification[] }
+    }>(apiKey, query, { filter, withLinked: filter !== null }),
+    fetchOwnComments(apiKey),
+  ])
   const requested = new Set(keys)
   return mergeTickets(
     data.viewer.assignedIssues.nodes,
     (data.linked?.nodes ?? []).filter(issue => requested.has(issue.identifier)),
     data.notifications.nodes,
     new Date(),
+    own,
   )
 }
 
-// Teams you belong to, for picking the ones you work on
-export async function listLinearTeams(apiKey: string): Promise<Array<{ key: string; name: string }>> {
-  const response = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: 'query { teams(first: 100) { nodes { key name } } }' }),
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (!response.ok) throw new Error(`Linear ${response.status}`)
-  const payload = (await response.json()) as {
-    data?: { teams: { nodes: Array<{ key: string; name: string }> } }
-    errors?: Array<{ message: string }>
+// Apart from the main query: the tickets still load when this one fails
+async function fetchOwnComments(apiKey: string): Promise<RawOwnComment[]> {
+  try {
+    const data = await linearQuery<{ comments: { nodes: RawOwnComment[] } }>(
+      apiKey,
+      `query($since: DateTimeOrDuration!) {
+        comments(first: ${ASKED_COUNT}, filter: { user: { isMe: { eq: true } }, createdAt: { gte: $since } }) {
+          nodes {
+            id body url createdAt resolvedAt
+            parent { resolvedAt }
+            issue {
+              ${ISSUE_FIELDS}
+              comments(first: 50, filter: { createdAt: { gte: $since } }) { nodes { createdAt user { isMe } } }
+            }
+          }
+        }
+      }`,
+      { since: ASKED_WINDOW },
+    )
+    return data.comments.nodes
+  } catch (error) {
+    console.error('Commentaires Linear indisponibles', error)
+    return []
   }
-  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
-  return payload.data.teams.nodes
 }
 
 // My tickets completed since a date, for a daily Flux kept no journal of
@@ -206,4 +266,21 @@ export async function fetchCompleted(apiKey: string, since: string): Promise<Com
       ? [{ key: issue.identifier, title: issue.title, url: issue.url, completedAt: issue.completedAt }]
       : [],
   )
+}
+
+// Teams you belong to, for picking the ones you work on
+export async function listLinearTeams(apiKey: string): Promise<Array<{ key: string; name: string }>> {
+  const response = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: 'query { teams(first: 100) { nodes { key name } } }' }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!response.ok) throw new Error(`Linear ${response.status}`)
+  const payload = (await response.json()) as {
+    data?: { teams: { nodes: Array<{ key: string; name: string }> } }
+    errors?: Array<{ message: string }>
+  }
+  if (!payload.data) throw new Error(payload.errors?.[0]?.message ?? 'Réponse Linear vide')
+  return payload.data.teams.nodes
 }

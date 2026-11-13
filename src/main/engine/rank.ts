@@ -55,6 +55,16 @@ export type LinearNotice = {
   waitingOnMe?: boolean
 }
 
+// A comment of mine nobody answered: awaitsReply comes from the triage, absent until it ran
+export interface AskedComment {
+  id: string
+  excerpt: string
+  text: string
+  at: string
+  url: string
+  awaitsReply?: boolean
+}
+
 export interface Ticket {
   key: string
   title: string
@@ -65,6 +75,7 @@ export interface Ticket {
   updatedAt: string
   labels: string[]
   notices: LinearNotice[]
+  asked?: AskedComment
   // Jira: the status is one you are working in, whatever its name
   inProgress?: boolean
   // Jira: in a running sprint or not; left out where the project runs no sprint
@@ -258,6 +269,7 @@ export function itemFromPullRequest(pr: PullRequest, ctx: RankContext): Item {
     title: pr.title,
     url: pr.url,
     branch: pr.headRefName,
+    mine: pr.author === ctx.me,
   }
   if (pr.state !== 'OPEN') return { ...base, terminal: true, ball: 'others', signals: [] }
 
@@ -267,10 +279,9 @@ export function itemFromPullRequest(pr: PullRequest, ctx: RankContext): Item {
 
   const blocked = BLOCKED_TITLE.test(pr.title)
   const stale = ageDays(pr.updatedAt, ctx.now) > DORMANT_DAYS
-  const mine = pr.author === ctx.me
   if (!blocked) {
-    if (mine && !stale) signals.push(...mineSignals(pr, ref, ctx))
-    if (!mine) signals.push(...theirSignals(pr, ref, ctx))
+    if (base.mine && !stale) signals.push(...mineSignals(pr, ref, ctx))
+    if (!base.mine) signals.push(...theirSignals(pr, ref, ctx))
   }
 
   const ball = signals.length > 0 ? 'me' : blocked || stale ? 'dormant' : 'others'
@@ -292,6 +303,7 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     url: ticket.url,
     ...(ticket.stateName ? { state: ticket.stateName } : {}),
     ...(ticket.inSprint === undefined ? {} : { inSprint: ticket.inSprint }),
+    mine: ticket.assignedToMe,
   }
   if (CLOSED_STATE_TYPES.has(ticket.stateType)) {
     return { ...base, terminal: true, ball: 'others', signals: [] }
@@ -321,7 +333,12 @@ export function itemFromTicket(ticket: Ticket, ctx: RankContext): Item {
     }
   }
 
+  // A backlog is parked work, neither waiting on anyone nor to pick up: only a request brings it back,
+  // mine to someone else included
+  const asked = ticket.asked && ticket.asked.awaitsReply !== false ? ticket.asked : undefined
+  const parked = ticket.stateType === 'backlog'
   const stale = ageDays(ticket.updatedAt, ctx.now) > DORMANT_DAYS
-  const ball = signals.length > 0 ? 'me' : stale ? 'dormant' : 'others'
-  return { ...base, terminal: false, ball, signals }
+  const ball = signals.length > 0 ? 'me' : asked ? 'others' : parked ? 'parked' : stale ? 'dormant' : 'others'
+  const line = asked ? { asked: { excerpt: asked.excerpt, at: asked.at, url: asked.url } } : {}
+  return { ...base, terminal: false, ball, signals, ...line }
 }

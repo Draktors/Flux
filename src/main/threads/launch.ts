@@ -8,9 +8,10 @@ import { BIN, REPOS_DIR, THREADS_DIR, TOPICS_DIR } from '../paths'
 import { renderBrief, threadName, threadPrompt } from './brief'
 import { repoFromRef } from './actions'
 import { selectWorkspace } from './cmux'
-import { newSessionUrl, openInDesktop, resumeUrl } from './desktop'
+import { continueUrl, newSessionUrl, openInDesktop, resumeUrl } from './desktop'
 
 const SESSION_ID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+const DESKTOP_ID = /^local_[A-Za-z0-9-]{1,64}$/
 
 export function parseWorktrees(porcelain: string): Map<string, string> {
   const byBranch = new Map<string, string>()
@@ -52,12 +53,21 @@ export async function launchThread(view: TopicView, action: ProposedAction): Pro
   return { session: id, dir: id, name, cwd, startedAt: new Date().toISOString(), pending: true }
 }
 
-export async function goToThread(thread: ThreadRef, alive: boolean): Promise<string | undefined> {
+// archived: Desktop only reopens sessions still in its list, so an archived one is imported anew
+export async function goToThread(
+  thread: ThreadRef,
+  alive: boolean,
+  archived: boolean,
+): Promise<string | undefined> {
   if (thread.pending) {
     // Desktop never wrote a transcript for it: start the same prompt again
     const dir = join(THREADS_DIR, thread.dir ?? thread.session)
     const prompt = await readFile(join(dir, 'prompt'), 'utf8')
     await openInDesktop(newSessionUrl(prompt, [thread.cwd, dir]))
+    return undefined
+  }
+  if (thread.desktop && DESKTOP_ID.test(thread.desktop) && !archived) {
+    await openInDesktop(continueUrl(thread.desktop))
     return undefined
   }
   if (!SESSION_ID.test(thread.session)) throw new Error(`Session invalide : ${thread.session}`)

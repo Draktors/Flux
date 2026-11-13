@@ -17,8 +17,14 @@ export function newSessionUrl(prompt: string, folders: string[]): string {
   return `claude://code/new?${params}`
 }
 
+// Imports a conversation into Desktop as a new session: for one Desktop never had, or archived
 export function resumeUrl(session: string): string {
   return `claude://resume?${new URLSearchParams({ session })}`
+}
+
+// Opens a session Desktop already has, by its own id; Desktop restarts its process if it was paused
+export function continueUrl(desktop: string): string {
+  return `claude://code/continue?${new URLSearchParams({ session: desktop })}`
 }
 
 export async function openInDesktop(url: string): Promise<void> {

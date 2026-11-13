@@ -100,16 +100,16 @@ describe('file sur les données réelles du 06/11', () => {
 
 describe('règles unitaires', () => {
   it('rend à moi une PR sans review nécessaire, prête à merger', () => {
-    const mine = pr({ author: ME, repo: 'cc-mobile', reviewDecision: null, ci: 'SUCCESS', mergeStateStatus: 'BLOCKED' })
-    const item = itemFromPullRequest(mine, { ...context, noReview: new Set(['cc-mobile']) })
+    const mine = pr({ author: ME, repo: 'app', reviewDecision: null, ci: 'SUCCESS', mergeStateStatus: 'BLOCKED' })
+    const item = itemFromPullRequest(mine, { ...context, noReview: new Set(['app']) })
     expect(item.ball).toBe('me')
     expect(item.signals[0]).toMatchObject({ rank: 4, action: 'ship' })
     expect(itemFromPullRequest(mine, context).ball).toBe('others')
   })
 
   it('garde un brouillon en brouillon, même sans review', () => {
-    const draft = pr({ author: ME, repo: 'cc-mobile', isDraft: true })
-    const item = itemFromPullRequest(draft, { ...context, noReview: new Set(['cc-mobile']) })
+    const draft = pr({ author: ME, repo: 'app', isDraft: true })
+    const item = itemFromPullRequest(draft, { ...context, noReview: new Set(['app']) })
     expect(item.signals[0]).toMatchObject({ rank: 6, detail: 'Brouillon' })
   })
 
@@ -360,6 +360,35 @@ describe('tickets', () => {
     expect(theirs.ball).not.toBe('me')
   })
 
+  it('range un backlog sans demande hors de l’attente, et le ramène sur une demande', () => {
+    const mention = {
+      id: 'a',
+      kind: 'mention' as const,
+      author: 'camille.martin',
+      excerpt: 'tu peux regarder ?',
+      text: 'tu peux regarder ?',
+      at: '2026-11-05T17:25:00Z',
+      url: 'https://linear.test/c',
+    }
+    const ball = (overrides: Partial<Ticket>) => itemFromTicket(ticket(overrides), context).ball
+    expect(ball({ stateName: 'Backlog' })).toBe('parked')
+    expect(ball({ stateName: 'Icebox', assignedToMe: false })).toBe('parked')
+    expect(ball({ stateName: 'Backlog', notices: [{ ...mention, kind: 'comment', waitingOnMe: false }] })).toBe('parked')
+    expect(ball({ stateName: 'Backlog', notices: [mention] })).toBe('me')
+    expect(ball({ stateName: 'To frame' })).toBe('me')
+    expect(ball({ stateName: 'Todo Weekly', stateType: 'unstarted', assignedToMe: false })).toBe('others')
+  })
+
+  it('garde en attente un ticket où ma question attend une réponse, backlog compris', () => {
+    const asked = { id: 'm1', excerpt: 'Tu valides ?', text: 'Tu valides ?', at: '2026-11-05T10:00:00Z', url: 'https://linear.test/m1' }
+    const waiting = itemFromTicket(ticket({ stateName: 'Backlog', assignedToMe: false, asked }), context)
+    expect(waiting).toMatchObject({ ball: 'others', mine: false, asked: { excerpt: 'Tu valides ?', url: 'https://linear.test/m1' } })
+    const done = itemFromTicket(ticket({ stateName: 'Backlog', asked: { ...asked, awaitsReply: false } }), context)
+    expect([done.ball, done.asked]).toEqual(['parked', undefined])
+    const view = reconcile([topic({ links: ['APP-1'] })], [waiting], [], NOW).views[0]
+    expect([view.ball, view.since]).toEqual(['others', '2026-11-05T10:00:00Z'])
+  })
+
   it('propose le diagnostic sur un ticket de bug', () => {
     const item = itemFromTicket(ticket({ stateName: 'In Progress', labels: ['Vrai bug'] }), context)
     expect(item.signals[0].action).toBe('diagnostic')
@@ -390,6 +419,48 @@ describe('rapprochement sujets / signaux', () => {
     expect(result.created).toHaveLength(1)
     expect(result.created[0].links).toEqual(['mobile#1', 'APP-1'])
     expect(result.views[0].items).toHaveLength(2)
+  })
+
+  it('sépare mon travail de celui des autres auquel je participe', () => {
+    const theirs = itemFromPullRequest(pr({ number: 2, author: 'sam-lee', headRefName: 'feature/app-9' }), context)
+    const assigned = ticketItem()
+    const other = itemFromTicket(ticket({ key: 'APP-2', assignedToMe: false }), context)
+    expect([itemFromPullRequest(pr({}), context).mine, theirs.mine, assigned.mine, other.mine]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+    const result = reconcile(
+      [
+        topic({ id: 'review', links: ['mobile#2'] }),
+        topic({ id: 'mixte', links: ['mobile#2', 'APP-1'] }),
+        topic({ id: 'note' }),
+      ],
+      [theirs, assigned],
+      [],
+      NOW,
+    )
+    expect(result.views.map(view => [view.topic.id, view.mine])).toEqual([
+      ['review', false],
+      ['mixte', true],
+      ['note', true],
+    ])
+  })
+
+  it('cache un sujet dont tous les liens dorment en backlog', () => {
+    const parked = itemFromTicket(ticket({ stateName: 'Backlog' }), context)
+    const review = itemFromPullRequest(pr({ number: 3, author: 'sam-lee', headRefName: 'feature/export' }), context)
+    const result = reconcile(
+      [topic({ id: 'seul', links: ['APP-1'] }), topic({ id: 'avec-pr', links: ['mobile#3', 'APP-1'] })],
+      [parked, review],
+      [],
+      NOW,
+    )
+    expect(result.views.map(view => [view.topic.id, view.ball])).toEqual([
+      ['seul', 'parked'],
+      ['avec-pr', 'others'],
+    ])
   })
 
   it('ne crée pas de sujet pour ce qui attend les autres', () => {
@@ -496,6 +567,7 @@ const view = (id: string, signalId: string, stamp: string, rank: 1 | 4 = 1): Top
   threads: [],
   rank,
   ball: 'me',
+  mine: true,
   since: stamp,
   actions: [],
 })

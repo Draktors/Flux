@@ -1,11 +1,16 @@
 import type { CallPatch, CallsState } from './calls'
 import type { CalendarName } from './calendars'
+import type { LinkMenu } from './links'
+import type { Profiles, ProfilesPatch } from './profiles'
 import type { TrackerName } from './trackers'
 
 export type Rank = 0 | 1 | 2 | 3 | 4 | 5 | 6
-export type Ball = 'me' | 'others' | 'agent' | 'dormant'
+// parked: in a Linear backlog with nothing asked of me, shown nowhere until someone asks
+export type Ball = 'me' | 'others' | 'agent' | 'dormant' | 'parked'
 export type TopicStatus = 'inbox' | 'open' | 'done'
-export type ThreadStatus = 'busy' | 'idle' | 'closed' | 'pending'
+// paused: open in Claude Desktop, its process stopped until you open it again
+// archived: archived in Claude Desktop; closed: no process and no Desktop record
+export type ThreadStatus = 'busy' | 'idle' | 'paused' | 'archived' | 'closed' | 'pending'
 export type SourceName = 'github' | 'linear' | 'jira' | 'agents' | 'calendar'
 
 export type ActionKind =
@@ -44,8 +49,18 @@ export interface Item {
   // Ticket in a running sprint; unknown where its project runs none
   inSprint?: boolean
   terminal: boolean
-  ball: 'me' | 'others' | 'dormant'
+  ball: 'me' | 'others' | 'dormant' | 'parked'
+  // My PR or a ticket assigned to me, as opposed to someone else's I take part in
+  mine: boolean
   signals: Signal[]
+  // My comment on it that nobody answered yet
+  asked?: AskedLine
+}
+
+export interface AskedLine {
+  excerpt: string
+  at: string
+  url: string
 }
 
 export interface ThreadRef {
@@ -57,6 +72,10 @@ export interface ThreadRef {
   dir?: string
   // Opened in Claude Desktop, its transcript not found yet: the session id is still unknown
   pending?: boolean
+  // Claude Desktop's own id (local_…): it stays when the conversation id moves, and reopens the session
+  desktop?: string
+  // The title Claude Desktop gave the session
+  title?: string
   // Legacy cmux tab
   workspace?: string
   closing?: boolean
@@ -76,6 +95,8 @@ export interface Topic {
 
 export interface ThreadView extends ThreadRef {
   status: ThreadStatus
+  // Last turn Claude Desktop recorded, else the launch
+  activeAt: string
 }
 
 export interface ProposedAction {
@@ -93,6 +114,8 @@ export interface TopicView {
   threads: ThreadView[]
   rank: Rank | null
   ball: Ball
+  // My own work: one of its items is mine, or a note with nothing linked
+  mine: boolean
   since: string | null
   actions: ProposedAction[]
 }
@@ -118,6 +141,12 @@ export interface Meeting {
 
 export type HealthLevel = 'ok' | 'weak' | 'alert' | 'positive' | 'unavailable'
 
+// One figure behind a health line: an event and its users, a monitor and its state
+export interface HealthItem {
+  label: string
+  value: string
+}
+
 export interface HealthLine {
   source: string
   level: HealthLevel
@@ -125,6 +154,29 @@ export interface HealthLine {
   // Shown only when the line is an alert
   detail: string | null
   url: string | null
+  // Absent from the dailies written before lines had figures
+  items?: HealthItem[]
+}
+
+export type Store = 'app-store' | 'play-store'
+
+export interface StoreReview {
+  id: string
+  app: string
+  store: Store
+  rating: number
+  title: string | null
+  text: string
+  author: string
+  date: string
+  version: string | null
+  url: string
+}
+
+// What the stores said, and the app and store pairs that did not answer
+export interface StoreFeed {
+  reviews: StoreReview[]
+  failed: Array<{ app: string; store: Store }>
 }
 
 // What the daily skill wrote, once Flux checked it
@@ -224,6 +276,8 @@ export interface DailySheet {
   candidates: DailyIntention[]
   blockers: DailyBlocker[]
   health: HealthLine[] | null
+  // Reviews posted since the previous workday; null when no app is followed
+  reviews: StoreFeed | null
   counts: RankCount[]
   standup: string | null
 }
@@ -275,6 +329,12 @@ export interface WrapupView {
   next: string | null
   done: WrapupDone[]
   focus: WrapupFocus[]
+}
+
+export interface WorkspaceInfo {
+  id: string
+  label: string
+  short: string
 }
 
 export interface AppState {
@@ -405,8 +465,14 @@ export interface FluxApi {
   connectGranola(): Promise<void>
   disconnectGranola(): Promise<void>
   onOpenWrapup(listener: () => void): () => void
+  // A flux:// link opened from outside: the one waiting at launch, then each new one
+  takeLink(): Promise<string | null>
+  onOpenLink(listener: (link: string) => void): () => void
+  // The native right-click menu that copies a line's links
+  showLinkMenu(menu: LinkMenu): Promise<void>
   // Ticks or unticks a wrap-up line: a free task closes, a closed topic reopens
   checkWrapup(id: string, done: boolean): Promise<void>
+  onRefreshShortcut(listener: () => void): () => void
   refresh(): Promise<void>
   createNote(text: string): Promise<void>
   openCapture(): Promise<void>
@@ -424,6 +490,9 @@ export interface FluxApi {
   openExternal(url: string): Promise<void>
   getSettings(): Promise<Settings>
   saveSettings(patch: SettingsPatch): Promise<void>
+  profiles(): Promise<Profiles>
+  // Relaunches Flux when the active profile changes
+  setProfiles(patch: ProfilesPatch): Promise<void>
   testNotification(): Promise<void>
   openNotificationSettings(): Promise<void>
   notificationAccess(): Promise<NotificationAccess>

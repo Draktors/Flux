@@ -12,6 +12,7 @@ const item = (kind: Item['kind'], inSprint?: boolean): Item => ({
   url: '',
   terminal: false,
   ball: 'me',
+  mine: true,
   signals: [],
   ...(inSprint === undefined ? {} : { inSprint }),
 })

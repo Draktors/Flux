@@ -57,7 +57,7 @@ describe('agenda Outlook / Teams', () => {
   const meetings = meetingsFromIcs(outlook, NOW)
 
   it('lit les fuseaux Windows publiés par Outlook', () => {
-    expect(meetings.find(meeting => meeting.title === 'Daily Communicity')?.start).toBe(
+    expect(meetings.find(meeting => meeting.title === 'Daily Boutique')?.start).toBe(
       '2026-11-06T08:30:00.000Z',
     )
   })

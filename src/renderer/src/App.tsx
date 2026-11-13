@@ -5,12 +5,15 @@ import {
   Plug,
   Plus,
   RefreshCw,
+  Search as SearchIcon,
   Settings,
   Waves,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import type { CallsState } from '../../shared/calls'
+import { parseFluxLink } from '../../shared/links'
+import type { Profiles } from '../../shared/profiles'
 import { knowsSprint, outsideSprint } from '../../shared/sprint'
 import { Boot, type BootProgress } from './Boot'
 import { CallsView } from './CallsView'
@@ -20,18 +23,27 @@ import { clock, until } from './format'
 import { Hero, LooseHero } from './Hero'
 import { Inspector } from './Inspector'
 import { Onboarding } from './Onboarding'
-import { looseId, Rail } from './Rail'
+import {
+  allViews,
+  listOf,
+  looseId,
+  resolveRoute,
+  tabFor,
+  type ListTab,
+  type SearchResult,
+  type SheetTab,
+  type Tab,
+} from './navigation'
+import { ProfileSwitch } from './Profiles'
+import { ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
+import { Search } from './Search'
 import { SettingsPanel } from './SettingsPanel'
 import { Toast, type ToastMessage } from './Toast'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
 import { WrapupView } from './WrapupView'
 
-type ListTab = 'queue' | 'active' | 'waiting' | 'notes'
-// Full-page views under the top bar, with no rail
-type SheetTab = 'wrapup' | 'daily' | 'calls'
-type Tab = ListTab | SheetTab
 
 const DAILY_READ_KEY = 'flux.dailyRead'
 const WRAPUP_READ_KEY = 'flux.wrapupRead'
@@ -48,26 +60,8 @@ const SOURCE_LABEL: Record<SourceName, string> = {
   calendar: 'Agenda',
 }
 
-function allViews(state: AppState): TopicView[] {
-  return [...state.queue, ...state.active, ...state.waiting, ...state.notes, ...state.dormant]
-}
-
 function isSheet(tab: Tab): tab is SheetTab {
   return tab === 'wrapup' || tab === 'daily' || tab === 'calls'
-}
-
-// Dormant topics close the waiting list: the wrap-up took their tab
-function listOf(state: AppState, tab: ListTab): TopicView[] {
-  return tab === 'waiting' ? [...state.waiting, ...state.dormant] : state[tab]
-}
-
-function tabFor(state: AppState, id: string): ListTab | null {
-  const has = (views: TopicView[]) => views.some(view => view.topic.id === id)
-  if (has(state.queue)) return 'queue'
-  if (has(state.active)) return 'active'
-  if (has(listOf(state, 'waiting'))) return 'waiting'
-  if (has(state.notes)) return 'notes'
-  return null
 }
 
 function emptyTitle(tab: ListTab, looseCount: number): string {
@@ -108,11 +102,15 @@ export function App() {
   const [onboarding, setOnboarding] = useState(false)
   const [sceneTint, setSceneTint] = useState<RankStyle | null>(null)
   const [settings, setSettings] = useState<FluxSettings | null>(null)
+  const [profiles, setProfiles] = useState<Profiles | null>(null)
   const [progress, setProgress] = useState<BootProgress>({})
   const [boot, setBoot] = useState<'playing' | 'leaving' | 'done'>('playing')
   const [refreshing, setRefreshing] = useState(false)
   // « Mes sujets » keeps only the running sprint's tickets unless you ask for all of them
   const [sprintOnly, setSprintOnly] = useState(() => readMark(SPRINT_KEY) !== 'all')
+  const [searchOpen, setSearchOpen] = useState(false)
+  // A flux:// link waits for the first state before it can land
+  const [link, setLink] = useState<string | null>(null)
   const bootStart = useRef(performance.now())
 
   // Refetches every source, calendar and calls included; the button and ⌘R share it
@@ -149,6 +147,7 @@ export function App() {
       setSettings(loaded)
       setOnboarding(!loaded.onboarded)
     })
+    void window.flux.profiles().then(setProfiles)
   }, [])
 
   useEffect(() => {
@@ -194,6 +193,41 @@ export function App() {
     [],
   )
 
+  useEffect(() => {
+    const stop = window.flux.onOpenLink(setLink)
+    void window.flux.takeLink().then(waiting => waiting && setLink(waiting))
+    return stop
+  }, [])
+
+  useEffect(() => {
+    if (!link || !state) return
+    setLink(null)
+    const route = parseFluxLink(link)
+    const target = route ? resolveRoute(state, route) : null
+    if (!target) {
+      showToast(
+        route && route.kind !== 'tab' ? `Plus dans Flux : ${route.kind === 'ref' ? route.ref : route.id}` : 'Lien Flux inconnu',
+        'error',
+      )
+      return
+    }
+    setSettingsOpen(false)
+    setSearchOpen(false)
+    setTab(target.tab)
+    setSelected(target.selected)
+  }, [link, state])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setSearchOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   useEffect(() => window.flux.onOpenDaily(() => setTab('daily')), [])
   useEffect(
     () =>
@@ -208,7 +242,7 @@ export function App() {
     if (!state || !selected) return
     const owner = tabFor(state, selected)
     if (owner && owner !== tab) setTab(owner)
-  }, [selected])
+  }, [selected, state === null])
 
   useEffect(() => {
     if (tab === 'daily' && state?.daily.status === 'ready') {
@@ -245,17 +279,20 @@ export function App() {
   const style = useMemo(() => rankStyle(focusRank), [focusRank])
   // Arrow keys walk the rail in order, loose items included
   const order = useMemo(
-    () => [
-      ...list.map(view => view.topic.id),
-      ...(tab === 'waiting' ? (state?.loose ?? []).map(looseId) : []),
-    ],
+    () =>
+      tab === 'waiting'
+        ? ownerGroups(list, state?.loose ?? []).flatMap(group => [
+            ...group.views.map(view => view.topic.id),
+            ...group.loose.map(looseId),
+          ])
+        : list.map(view => view.topic.id),
     [list, tab, state?.loose],
   )
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
-      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen) return
+      if (['INPUT', 'TEXTAREA'].includes(target.tagName) || sheet || settingsOpen || searchOpen) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
       const index = order.indexOf(currentId ?? '')
       const next = order[index + (event.key === 'ArrowRight' ? 1 : -1)]
@@ -266,7 +303,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [order, currentId, sheet, settingsOpen])
+  }, [order, currentId, sheet, settingsOpen, searchOpen])
 
   // Same slot in both trees, so the scene keeps playing while the app appears underneath
   const bootScene =
@@ -284,6 +321,7 @@ export function App() {
           onDone={() => {
             setOnboarding(false)
             setSceneTint(null)
+            void window.flux.profiles().then(setProfiles)
             void window.flux.refresh()
           }}
         />
@@ -335,6 +373,12 @@ export function App() {
     setSelected(id)
     setTab(tabFor(state, id) ?? 'queue')
   }
+  const pick = (result: SearchResult) => {
+    setSearchOpen(false)
+    setSettingsOpen(false)
+    setTab(result.tab)
+    setSelected(result.kind === 'page' ? null : result.id)
+  }
   // A dated line at the end of the topic's note
   const addNote = (id: string, text: string) => {
     const topic = views.find(view => view.topic.id === id)?.topic
@@ -356,6 +400,9 @@ export function App() {
               <Waves size={16} strokeWidth={2.4} aria-hidden="true" />
             </span>
             <span className="brand-name">Flux</span>
+            {profiles?.perso && (
+              <ProfileSwitch profiles={profiles} onError={message => showToast(message, 'error')} />
+            )}
             {state.workspaces.length > 1 && (
               <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
                 {state.workspaces.map(workspace => (
@@ -439,6 +486,15 @@ export function App() {
             )}
             <button
               type="button"
+              className="round glass"
+              aria-label="Rechercher"
+              title="Rechercher · ⌘K"
+              onClick={() => setSearchOpen(true)}
+            >
+              <SearchIcon size={17} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
               className="round glass refresh"
               aria-label="Tout actualiser"
               aria-busy={refreshing}
@@ -507,7 +563,7 @@ export function App() {
             <Rail
               views={list}
               loose={tab === 'waiting' ? state.loose : undefined}
-              grouped={tab === 'queue'}
+              grouping={tab === 'queue' ? 'rank' : tab === 'waiting' ? 'owner' : 'none'}
               sprint={
                 tab === 'queue' && sprintKnown
                   ? {
@@ -527,6 +583,8 @@ export function App() {
           </>
         )}
 
+        {searchOpen && <Search state={state} onPick={pick} onClose={() => setSearchOpen(false)} />}
+
         {settingsOpen && (
           <SettingsPanel
             onClose={() => setSettingsOpen(false)}
@@ -536,9 +594,11 @@ export function App() {
             }}
             onSaved={() => {
               setSettingsOpen(false)
+              void window.flux.profiles().then(setProfiles)
               showToast('Réglages enregistrés')
             }}
             onError={message => showToast(message, 'error')}
+            onProfiles={setProfiles}
             initialView={settingsView}
           />
         )}

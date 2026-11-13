@@ -1,14 +1,16 @@
 import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { DAILY_TEMPLATE } from '../../shared/dailyTemplate'
 import type { CheckResult } from '../../shared/types'
-import { CONFIG } from '../config'
+import { CONFIG, CONFIG_FILE as CONFIG_PATH } from '../config'
 import { DAILY_COMMAND, DAILY_SKILL_DIR } from '../paths'
 import { newSessionUrl, openInDesktop } from '../threads/desktop'
 import { DAILY_CONTRACT } from './daily'
 
-const CONFIG_FILE = '~/.flux/config.json'
+// The active profile's config, written the way you would type it
+const CONFIG_FILE = CONFIG_PATH.replace(homedir(), '~')
 
 // Writes the generic skill where Flux looks for it, and never over one already there
 export async function useDailyTemplate(): Promise<CheckResult> {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { RANKS } from '../../shared/ranks'
 import type { WrapupDone, WrapupFocus, WrapupOutcome, WrapupView as Wrapup } from '../../shared/types'
 import { clock, displayTitle, waitingFor } from './format'
+import { menuOfLine, showMenu } from './navigation'
 import { rankStyle } from './rankStyle'
 
 const OUTCOME: Record<WrapupOutcome, string> = {
@@ -27,7 +28,7 @@ interface RowProps {
 function Row({ line, checked, locked, meta, side, accent, onCheck, onOpen }: RowProps) {
   const openable = line.live || line.url !== null
   return (
-    <li className={`check-row${checked ? ' done' : ''}`}>
+    <li className={`check-row${checked ? ' done' : ''}`} onContextMenu={event => showMenu(event, menuOfLine(line))}>
       <input
         type="checkbox"
         className="check-box"

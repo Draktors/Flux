@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   Menu,
@@ -11,28 +12,36 @@ import {
   powerMonitor,
   shell,
   Tray,
+  type MenuItemConstructorOptions,
+  type WebContents,
 } from 'electron'
 import type { AppState, ProjectOptions, ProposedAction, SettingsPatch, Topic } from '../shared/types'
 import type { CallPatch } from '../shared/calls'
+import { FLUX_SCHEME, linkMenuEntries, parseFluxLink, type LinkMenu } from '../shared/links'
+import { PROFILE_LABEL, type ProfilesPatch } from '../shared/profiles'
 import { Calls } from './calls/service'
+import { CONFIG } from './config'
 import { Flux } from './engine/poller'
 import { Daily, localDate } from './llm/daily'
 import { createDailySkill, useDailyTemplate } from './llm/dailySkillBrief'
 import { Triage } from './llm/triage'
 import { notificationAccess, requestNotificationAccess } from './notificationAccess'
 import { checkCalendarUrl, checkGithub, checkJira, checkLinearKey, normalizeJiraSite } from './onboarding'
+import { ACTIVE_PROFILE, profiles, saveProfiles } from './profile'
 import { ARCHIVE_DIR, DAILY_DIR, REPOS_DIR, THREADS_DIR, TOPICS_DIR } from './paths'
 import { fetchCalendar, fetchCalendarBetween } from './sources/calendar'
 import { fetchGitActivity } from './sources/commits'
 import { GITHUB_HOST, listGithubAccounts, listRecentRepos } from './sources/github'
 import { fetchJira, listJiraProjects } from './sources/jira'
 import { fetchCompleted, fetchLinear, listLinearTeams } from './sources/linear'
+import { fetchStoreReviews } from './sources/stores'
 import { SettingsStore } from './store/settings'
 import { noteFromText, TopicStore } from './store/topics'
 import { closeThreads } from './threads/close'
 import { adoptThreads } from './threads/desktop'
 import { goToThread, launchThread } from './threads/launch'
 import { allWorkspaces } from './workspaces'
+import { desktopOf } from './threads/sessions'
 
 const THREAD_SETTLE_MS = 6_000
 
@@ -44,6 +53,9 @@ let settings: SettingsStore
 let daily: Daily
 let calls: Calls
 const liveNotifications = new Set<Notification>()
+// A flux:// link waits here until the window can take it
+let pendingLink: string | null = null
+const linkReady = new WeakSet<WebContents>()
 
 function pageUrl(hash = ''): { url?: string; file?: string } {
   const dev = process.env.ELECTRON_RENDERER_URL
@@ -90,6 +102,7 @@ function openMain(): BrowserWindow {
   window.on('closed', () => {
     if (mainWindow === window) mainWindow = null
   })
+  window.webContents.on('did-start-loading', () => linkReady.delete(window.webContents))
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
@@ -147,6 +160,35 @@ function showWrapup(): void {
   sendToMain('flux:open-wrapup-view')
 }
 
+// Sent at once to a window already listening, otherwise kept until it asks
+function openLink(link: string): void {
+  if (!parseFluxLink(link)) return
+  if (!app.isReady()) {
+    pendingLink = link
+    return
+  }
+  const window = openMain()
+  if (linkReady.has(window.webContents)) window.webContents.send('flux:open-link', link)
+  else pendingLink = link
+}
+
+function showLinkMenu(sender: WebContents, menu: LinkMenu): void {
+  const entries = linkMenuEntries(menu)
+  if (entries.length === 0) return
+  const item = (entry: { label: string; copy: string }): MenuItemConstructorOptions => ({
+    label: entry.label,
+    click: () => clipboard.writeText(entry.copy),
+  })
+  const sources = entries.filter(entry => !entry.copy.startsWith(`${FLUX_SCHEME}:`))
+  const flux = entries.filter(entry => entry.copy.startsWith(`${FLUX_SCHEME}:`))
+  const template: MenuItemConstructorOptions[] = [
+    ...sources.map(item),
+    ...(sources.length > 0 && flux.length > 0 ? [{ type: 'separator' as const }] : []),
+    ...flux.map(item),
+  ]
+  Menu.buildFromTemplate(template).popup({ window: BrowserWindow.fromWebContents(sender) ?? undefined })
+}
+
 function trayLabel(state: AppState): string {
   const head = state.queue[0]
   if (!head) return '✓'
@@ -155,10 +197,20 @@ function trayLabel(state: AppState): string {
   return `▶ ${state.queue.length}  ${short}`
 }
 
+// The other profile, once Perso is on: picking it relaunches Flux there
+function profileItems(): MenuItemConstructorOptions[] {
+  if (!profiles().perso) return []
+  const other = ACTIVE_PROFILE === 'pro' ? 'perso' : 'pro'
+  return [
+    { type: 'separator' },
+    { label: `Passer à ${PROFILE_LABEL[other]}`, click: () => setProfiles({ active: other }) },
+  ]
+}
+
 function buildTray(): void {
   tray = new Tray(nativeImage.createEmpty())
   tray.setTitle('Flux')
-  tray.setToolTip('Flux')
+  tray.setToolTip(profiles().perso ? `Flux · ${PROFILE_LABEL[ACTIVE_PROFILE]}` : 'Flux')
   tray.on('click', () => {
     const head = flux.current()?.queue[0]
     if (head) showTopic(head.topic.id)
@@ -177,6 +229,7 @@ function buildTray(): void {
           click: () => openCapture(),
         },
         { label: 'Rafraîchir', click: () => void flux.refresh() },
+        ...profileItems(),
         { type: 'separator' },
         { label: 'Quitter', role: 'quit' },
       ]),
@@ -268,6 +321,13 @@ function syncDailies(): void {
   for (const workspace of workspaces) daily.sync(now, workspace.id)
 }
 
+// Config, paths and caches all hang on the profile read at launch: a switch starts Flux afresh on the other one
+function setProfiles(patch: ProfilesPatch): void {
+  if (!saveProfiles(patch)) return
+  app.relaunch()
+  app.quit()
+}
+
 function registerIpc(): void {
   ipcMain.handle('flux:get-state', () => flux.current())
   ipcMain.handle('flux:refresh', async () => {
@@ -318,16 +378,27 @@ function registerIpc(): void {
   ipcMain.handle('flux:focus-thread', async (_event, id: string, session: string) => {
     const topic = requireTopic(id)
     await flux.adoptThreads()
-    const thread = topic.threads.find(entry => entry.session === session || entry.dir === session)
+    // The renderer names a thread by its Desktop id when it has one: the conversation id may have moved
+    const thread = topic.threads.find(
+      entry => entry.desktop === session || entry.session === session || entry.dir === session,
+    )
     if (!thread) throw new Error(`Thread introuvable : ${session}`)
     const alive = flux.liveSessions().some(entry => entry.session === thread.session)
-    const workspace = await goToThread(thread, alive)
+    const archived = desktopOf(thread, flux.desktopSessions())?.archived ?? false
+    const workspace = await goToThread(thread, alive, archived)
     if (workspace !== thread.workspace) {
       thread.workspace = workspace
       await flux.saveTopic(topic)
     }
     setTimeout(() => void flux.refresh(), THREAD_SETTLE_MS)
   })
+  ipcMain.handle('flux:take-link', event => {
+    linkReady.add(event.sender)
+    const link = pendingLink
+    pendingLink = null
+    return link
+  })
+  ipcMain.handle('flux:link-menu', (event, menu: LinkMenu) => showLinkMenu(event.sender, menu))
   ipcMain.handle('flux:open-external', (_event, url: string) => {
     if (/^https?:/i.test(url)) return shell.openExternal(url)
     return undefined
@@ -350,6 +421,8 @@ function registerIpc(): void {
     // The panel closes as soon as settings are written; sources reload in the background
     void flux.reloadSources()
   })
+  ipcMain.handle('flux:profiles', () => profiles())
+  ipcMain.handle('flux:set-profiles', (_event, patch: ProfilesPatch) => setProfiles(patch))
   ipcMain.handle('flux:test-notification', () => {
     notify('Flux', 'Les notifications arrivent bien.', () => openMain())
   })
@@ -394,6 +467,11 @@ async function main(): Promise<void> {
     app.quit()
     return
   }
+  // Before ready: a link that launches Flux arrives first
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    openLink(url)
+  })
   await app.whenReady()
   settings = new SettingsStore()
   const triage = new Triage()
@@ -438,6 +516,8 @@ async function main(): Promise<void> {
       const key = settings.secret('linearKey')
       return key ? fetchCompleted(key, since) : []
     },
+    fetchReviews: async () => (CONFIG.daily.stores.apps.length > 0 ? fetchStoreReviews(CONFIG.daily.stores) : null),
+
     fetchMeetings: async () => {
       const url = settings.secret('calendarUrl')
       return url && settings.calendar() ? fetchCalendar(url) : null
@@ -462,9 +542,16 @@ async function main(): Promise<void> {
   buildTray()
   registerCapture()
   openMain()
-  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true })
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true })
+    app.setAsDefaultProtocolClient(FLUX_SCHEME)
+  }
   powerMonitor.on('resume', () => void flux.refresh())
-  app.on('second-instance', () => openMain())
+  app.on('second-instance', (_event, argv) => {
+    const link = argv.find(arg => arg.startsWith(`${FLUX_SCHEME}://`))
+    if (link) openLink(link)
+    else openMain()
+  })
   app.on('activate', () => openMain())
   app.on('window-all-closed', () => undefined)
   app.on('will-quit', () => {

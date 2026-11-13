@@ -1,7 +1,6 @@
 import {
   CalendarClock,
   CloudOff,
-  Layers,
   Plug,
   Plus,
   RefreshCw,
@@ -36,10 +35,12 @@ import {
 import { ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { Search } from './Search'
+import { useSlidingThumb } from './SlidingThumb'
 import { SettingsPanel } from './SettingsPanel'
 import { Toast, type ToastMessage } from './Toast'
 import { Stage } from './Stage'
 import { useSeen } from './useSeen'
+import { WorkspaceSwitch } from './WorkspaceSwitch'
 import { WrapupView } from './WrapupView'
 
 
@@ -82,6 +83,42 @@ function saveMark(key: string, value: string): void {
   } catch {
     return
   }
+}
+
+// The main views bar: the chosen view's pill slides like the projects toggle's
+function ViewTabs({
+  tabs,
+  current,
+  unread,
+  onPick,
+}: {
+  tabs: Array<{ key: Tab; label: string; count: number }>
+  current: Tab
+  unread: { daily: boolean; wrapup: boolean }
+  onPick(key: Tab): void
+}) {
+  const { register, thumb } = useSlidingThumb(current, [tabs.map(entry => entry.key).join()])
+  return (
+    <nav className="tabs sliding glass lens" aria-label="Vues">
+      {thumb}
+      {tabs.map(entry => (
+        <button
+          type="button"
+          key={entry.key}
+          ref={register(entry.key)}
+          aria-current={current === entry.key ? 'page' : undefined}
+          onClick={() => onPick(entry.key)}
+        >
+          {entry.label}
+          {entry.count > 0 && <span className="count">{entry.count}</span>}
+          {entry.key === 'daily' && unread.daily && <span className="unread" aria-label="Nouveau daily" />}
+          {entry.key === 'wrapup' && unread.wrapup && (
+            <span className="unread" aria-label="Wrap-up à faire" />
+          )}
+        </button>
+      ))}
+    </nav>
+  )
 }
 
 export function App() {
@@ -396,57 +433,28 @@ export function App() {
             </span>
             <span className="brand-name">Flux</span>
             {state.workspaces.length > 1 && (
-              <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
-                {state.workspaces.map(workspace => (
-                  <button
-                    type="button"
-                    key={workspace.id}
-                    title={workspace.label}
-                    aria-current={(switching ?? state.workspace) === workspace.id ? 'page' : undefined}
-                    onClick={() => switchWorkspace(workspace.id)}
-                  >
-                    {workspace.short}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="workspace-manage"
-                  aria-label="Gérer les espaces"
-                  title="Gérer les espaces"
-                  onClick={() => {
-                    setSettingsView('workspaces')
-                    setSettingsOpen(true)
-                  }}
-                >
-                  <Layers size={13} aria-hidden="true" />
-                </button>
-              </nav>
+              <WorkspaceSwitch
+                workspaces={state.workspaces}
+                current={switching ?? state.workspace}
+                onPick={switchWorkspace}
+                onManage={() => {
+                  setSettingsView('workspaces')
+                  setSettingsOpen(true)
+                }}
+              />
             )}
           </div>
 
-          <nav className="tabs glass lens" aria-label="Vues">
-            {tabs.map(entry => (
-              <button
-                type="button"
-                key={entry.key}
-                aria-current={tab === entry.key ? 'page' : undefined}
-                onClick={() => {
-                  setTab(entry.key)
-                  setSelected(null)
-                  setSettingsOpen(false)
-                }}
-              >
-                {entry.label}
-                {entry.count > 0 && <span className="count">{entry.count}</span>}
-                {entry.key === 'daily' && unreadDaily && (
-                  <span className="unread" aria-label="Nouveau daily" />
-                )}
-                {entry.key === 'wrapup' && unreadWrapup && (
-                  <span className="unread" aria-label="Wrap-up à faire" />
-                )}
-              </button>
-            ))}
-          </nav>
+          <ViewTabs
+            tabs={tabs}
+            current={tab}
+            unread={{ daily: unreadDaily, wrapup: unreadWrapup }}
+            onPick={key => {
+              setTab(key)
+              setSelected(null)
+              setSettingsOpen(false)
+            }}
+          />
 
           <div className="topbar-end">
             {meeting && (

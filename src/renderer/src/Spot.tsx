@@ -1,5 +1,20 @@
-import { ChevronsLeftRight, Pause, Play, Plus, RefreshCw, Settings as Gear, Sparkles, Waves, X } from 'lucide-react'
+import {
+  ArrowUpRight,
+  Bot,
+  Check,
+  ChevronsLeftRight,
+  Hand,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Settings as Gear,
+  Sparkles,
+  Waves,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { RANKS } from '../../shared/ranks'
 import type { Rank } from '../../shared/types'
 import { BrandIcon } from './Brand'
 import { rankStyle, tint } from './rankStyle'
@@ -589,119 +604,242 @@ function ReviewsPicture() {
   )
 }
 
-// Before and after, one under the other: the after window shows right of the split
-function Compare({ before, after }: { before: ReactNode; after: ReactNode }) {
+/* The real layout, drawn small: the topic at the bottom left, its links on the right, the rail
+   along the bottom. Only the topic the scene is about is written out; the other cards are
+   skeletons, so the eye goes where the change is */
+
+const RAIL_TOP = 498
+const railLeft = (index: number) => 38 + index * 194
+
+interface Topic {
+  ref: string
+  rank: Rank
+  age: string
+  title?: string
+  busy?: boolean
+}
+
+function TopicCard({
+  topic,
+  selected,
+  className = '',
+  style,
+  children,
+}: {
+  topic: Topic
+  selected?: boolean
+  className?: string
+  style?: CSSProperties
+  children?: ReactNode
+}) {
   return (
-    <>
-      {before}
-      <div className="w-after">{after}</div>
-    </>
-  )
-}
-
-function Tag({ children, side }: { children: ReactNode; side: 'left' | 'right' }) {
-  return <span className={`w-tag ${side}`}>{children}</span>
-}
-
-type ThreadState = 'busy' | 'idle' | 'paused'
-
-const STATE_LABEL: Record<ThreadState, string> = {
-  busy: 'Au travail',
-  idle: 'T’attend',
-  paused: 'En pause dans Claude',
-}
-
-function State({ state }: { state: ThreadState }) {
-  return (
-    <span className="w-state-line">
-      <span className={`w-state ${state}`} />
-      {STATE_LABEL[state]}
+    <span
+      className={`w-topic${selected ? ' selected' : ''} ${className}`}
+      style={{ ...tint(rankStyle(topic.rank)), ...style }}
+    >
+      <span className="w-topic-head">
+        <b>{topic.ref}</b>
+        {children}
+        <span className="w-topic-age">{topic.age}</span>
+      </span>
+      {topic.title ? (
+        <span className="w-topic-title">{topic.title}</span>
+      ) : (
+        <>
+          <i className="w-skel" />
+          <i className="w-skel short" />
+        </>
+      )}
     </span>
   )
 }
 
-// The topic both windows show, and the conversation Flux keeps for it
-const SESSION_TOPIC: Card = { ref: 'OFF-1048', title: 'Corriger l’enregistrement du fichier', meta: '', rank: 3 }
-const SESSION_TITLE = 'Diagnostic du bug d’enregistrement'
-
-const AFTER_RAIL: Array<{ card: Card; state: ThreadState }> = [
-  { card: { ref: 'daca#1516', title: 'Sortie de RxJS, lot 1', meta: '', rank: 1 }, state: 'busy' },
-  { card: SESSION_TOPIC, state: 'idle' },
-  { card: { ref: 'daca#1600', title: 'Débrief direct', meta: '', rank: 4 }, state: 'paused' },
-]
-
-const SESSION_HERO = {
-  rank: 3 as Rank,
-  title: 'Corriger l’enregistrement du fichier',
-  primary: 'Ouvrir dans Claude',
-  secondary: 'Voir le ticket',
+function TopicHero({ topic, position }: { topic: Topic; position: string }) {
+  const Icon = rankStyle(topic.rank).icon
+  return (
+    <div className="w-focus-hero">
+      <span className="w-hero-rank">
+        <span className="w-tile">
+          <Icon size={13} strokeWidth={2.2} />
+        </span>
+        {RANKS[topic.rank].label}
+      </span>
+      <h3 className="w-focus-title">{topic.title}</h3>
+      <span className="w-focus-meta">
+        <span>{topic.ref}</span>
+        <span>{position}</span>
+      </span>
+      <span className="w-focus-actions">
+        <span className="w-button solid">
+          <BrandIcon brand="claude" size={14} />
+          Ouvrir dans Claude
+          <ArrowUpRight size={14} />
+        </span>
+        <span className="w-button">
+          <BrandIcon brand="linear" size={13} />
+          Voir le ticket
+        </span>
+        <span className="w-button round">
+          <Hand size={14} />
+        </span>
+        <span className="w-button round">
+          <Check size={14} />
+        </span>
+      </span>
+    </div>
+  )
 }
 
-// When Claude hands back in the before window, and when the topic leaves En cours
-const HANDS_BACK = 2.6
-const LEAVES = 3.6
+function LinkRow({ kind, title, detail, className = '', style }: {
+  kind: 'conversation' | 'ticket'
+  title: string
+  detail: ReactNode
+  className?: string
+  style?: CSSProperties
+}) {
+  return (
+    <span className={`w-row-link ${className}`} style={style}>
+      <span className={`w-kind ${kind}`}>
+        <BrandIcon brand={kind === 'conversation' ? 'claude' : 'linear'} size={13} />
+      </span>
+      <span className="w-row-text">
+        <b>{title}</b>
+        <small>{detail}</small>
+      </span>
+      <ArrowUpRight size={13} className="w-row-go" />
+    </span>
+  )
+}
+
+// The panel on the right: the topic's links, then its note
+function TopicLinks({ conversation }: { conversation?: ReactNode }) {
+  return (
+    <div className="w-inspector">
+      <span className="w-inspector-label">Liens</span>
+      <span className="w-rows">
+        {conversation}
+        <LinkRow kind="ticket" title="OFF-1048" detail="Impossible d’enregistrer le fichier" />
+      </span>
+      <span className="w-inspector-label">Note</span>
+      <i className="w-skel" />
+      <i className="w-skel short" />
+    </div>
+  )
+}
+
+// The before window, then the after one clipped to the right of the split line; at the end both
+// step back and sit side by side
+function Compare({ before, after, apart }: { before: ReactNode; after: ReactNode; apart: number }) {
+  return (
+    <>
+      <div className="w-pane" style={d(apart)}>
+        {before}
+      </div>
+      <div className="w-after" style={d(apart)}>
+        {after}
+      </div>
+      <span className="w-pane-label w-in" style={d(apart + 0.6, pos(16, 110))}>
+        Avant
+      </span>
+      <span className="w-pane-label now w-in" style={d(apart + 0.6, pos(493, 110))}>
+        Maintenant
+      </span>
+    </>
+  )
+}
+
+function Tag({ children, side, until }: { children: ReactNode; side: 'left' | 'right'; until: number }) {
+  return (
+    <span className={`w-tag ${side} w-span`} style={span(0, until)}>
+      {children}
+    </span>
+  )
+}
+
+function State({ label }: { label: string }) {
+  return (
+    <span className="w-state-line">
+      <span className="w-state idle" />
+      {label}
+    </span>
+  )
+}
+
+// The topic both windows show, and the conversation Flux now keeps in its links
+const SESSION_TOPIC: Topic = { ref: 'OFF-1048', rank: 6, age: '2 h', title: 'Corriger l’enregistrement du fichier' }
+const SESSION_TITLE = 'Diagnostic de l’enregistrement'
+
+// En cours as it is now, the liveliest first: at work, waiting for you, paused in Claude
+const AFTER_RAIL: Topic[] = [
+  { ref: 'daca#1516', rank: 1, age: '16 j', busy: true },
+  SESSION_TOPIC,
+  { ref: 'daca#1600', rank: 4, age: '1 j' },
+  { ref: 'aura#247', rank: 5, age: '3 j' },
+]
+
+// The scene's beats, in seconds
+const HANDS_BACK = 4.4
+const LEAVES = 6
+const WIPE = 8.6
+const ZOOM = 11.2
+const CLICK = 13.6
+const UNZOOM = 14.6
+const RAIL_LOOK = 16.9
+const APART = 19.8
+// A touch smaller than the usual whole view, so the captions stay clear of the rail
+const SESSIONS_VIEW: View = [0.78, 480, 345]
 
 function SessionsPicture() {
   const before = (
     <Chrome specs={tabs({ 'En cours': { on: [0, 99], count: [1, 0, LEAVES] } })}>
-      {/* The card slides out of the rail first, then the page empties */}
-      <div className="w-layer w-out" style={d(LEAVES + 0.2)}>
-        <Hero chip="Agent au travail" meta="OFF-1048 · Claude travaille depuis 40 min" {...SESSION_HERO} />
-        <CardView card={SESSION_TOPIC} selected className="w-leave-rail" style={d(LEAVES, pos(640, 84))}>
-          <span className="w-card-meta w-swap-meta">
-            <span className="w-out" style={d(HANDS_BACK)}>
-              <State state="busy" />
-            </span>
-            <span className="w-in" style={d(HANDS_BACK + 0.1)}>
-              <State state="idle" />
-            </span>
-          </span>
-        </CardView>
+      <div className="w-layer w-out" style={d(LEAVES + 0.3)}>
+        <TopicHero topic={SESSION_TOPIC} position="1 sur 1" />
+        <TopicLinks />
       </div>
-      <h3 className="w-empty w-in" style={d(LEAVES + 0.3, pos(48, 210))}>
+      <TopicCard topic={SESSION_TOPIC} selected className="w-drop" style={d(LEAVES, pos(railLeft(0), RAIL_TOP))}>
+        <Bot size={12} className="w-out" style={d(HANDS_BACK)} />
+      </TopicCard>
+      <h3 className="w-empty w-in" style={d(LEAVES + 0.6)}>
         Rien ici pour le moment.
       </h3>
-      <Tag side="left">Avant</Tag>
+      <Tag side="left" until={APART}>
+        Avant
+      </Tag>
     </Chrome>
   )
   const after = (
-    <Chrome specs={tabs({ 'En cours': { on: [0, 99], count: 3 } })}>
+    <Chrome specs={tabs({ 'En cours': { on: [0, 99], count: AFTER_RAIL.length } })}>
       <div className="w-layer">
-        <Hero chip="Claude t’attend" meta="OFF-1048 · conversation ouverte depuis 2 h" {...SESSION_HERO} />
-        <div className="w-links" style={pos(48, 384)}>
-          <span className="w-label">Liens</span>
-          <div className="w-link conversation w-press" style={d(9.3)}>
-            <span className="w-link-kind claude">
-              <BrandIcon brand="claude" size={13} />
-            </span>
-            <span className="w-link-text">
-              <b>{SESSION_TITLE}</b>
-              <State state="idle" />
-            </span>
-          </div>
-          <div className="w-link">
-            <span className="w-link-kind ticket">
-              <BrandIcon brand="linear" size={13} />
-            </span>
-            <span className="w-link-text">
-              <b>OFF-1048</b>
-              <span className="w-state-line">Impossible d’enregistrer le fichier</span>
-            </span>
-          </div>
-        </div>
-        {AFTER_RAIL.map(({ card, state }, index) => (
-          <CardView key={card.ref} card={card} selected={card === SESSION_TOPIC} style={pos(640, 84 + index * 72)}>
-            <span className="w-card-meta">
-              <State state={state} />
-            </span>
-          </CardView>
-        ))}
+        <TopicHero topic={SESSION_TOPIC} position="2 sur 4" />
+        <TopicLinks
+          conversation={
+            <LinkRow
+              kind="conversation"
+              title={SESSION_TITLE}
+              detail={<State label="T’attend" />}
+              className="w-press"
+              style={d(CLICK)}
+            />
+          }
+        />
       </div>
-      <Toast from={10.1} to={11.3} text="Conversation rouverte dans Claude" top={84} />
-      <Tag side="right">Maintenant</Tag>
+      {AFTER_RAIL.map((topic, index) => (
+        <TopicCard
+          key={topic.ref}
+          topic={topic}
+          selected={topic === SESSION_TOPIC}
+          style={pos(railLeft(index), RAIL_TOP)}
+        >
+          {topic.busy && <Bot size={12} />}
+        </TopicCard>
+      ))}
+      <Toast from={UNZOOM + 0.3} to={RAIL_LOOK - 0.2} text="Conversation rouverte dans Claude" top={530} />
+      <Tag side="right" until={APART}>
+        Maintenant
+      </Tag>
     </Chrome>
   )
-  return <Compare before={before} after={after} />
+  return <Compare before={before} after={after} apart={APART} />
 }
 
 /* Scenes */
@@ -728,50 +866,51 @@ export const SCENES: Scene[] = [
   {
     id: 'sessions',
     rank: 0,
-    ms: 15000,
+    ms: 25000,
     kicker: 'Sessions Claude',
     headline: 'Tes conversations ne se perdent plus.',
-    headlineUntil: 1.4,
+    headlineUntil: 1.6,
     captions: [
-      [1.4, 'Avant : Claude te rend la main…'],
+      [1.8, 'Avant : Claude travaille, le sujet est En cours.'],
+      [HANDS_BACK - 0.2, 'Puis Claude te rend la main…'],
       [LEAVES, '…et le sujet quitte En cours, sa conversation avec.'],
-      [5.8, 'Maintenant, il reste en cours tant qu’il est ouvert.'],
-      [7.8, 'La conversation est dans ses liens : un clic la rouvre.'],
-      [11.3, 'Au travail, t’attend ou en pause : tout ce que tu as lancé.'],
+      [WIPE, 'Maintenant, il reste En cours tant qu’il n’est pas clos.'],
+      [ZOOM, 'Sa conversation est dans ses liens.'],
+      [CLICK - 0.4, 'Un clic la rouvre dans Claude.'],
+      [RAIL_LOOK, 'Tout ce que tu as lancé reste En cours, au travail ou non.'],
+      [APART, 'Avant : En cours vide. Maintenant : tout y est.'],
     ],
     cam: [
       cam(1.2, GLOBAL),
-      cam(1.9, WHOLE),
-      cam(7.2, WHOLE),
-      [7.9, 1.5, 300, 452],
-      [9.5, 1.5, 300, 452],
-      cam(10.1, WHOLE),
+      cam(1.9, SESSIONS_VIEW),
+      cam(ZOOM, SESSIONS_VIEW),
+      [ZOOM + 0.7, 1.5, 600, 350],
+      [UNZOOM, 1.5, 600, 350],
+      cam(UNZOOM + 0.7, SESSIONS_VIEW),
+      cam(APART, SESSIONS_VIEW),
+      [APART + 0.8, 1, 480, 290],
     ],
     cursor: [
-      [0, 520, 560, 0],
-      [7.5, 520, 560, 0],
-      [7.8, 520, 560],
-      [9, 196, 430],
-      [9.5, 196, 430],
-      [10.3, 380, 540],
-      [10.6, 380, 540, 0],
+      [0, 560, 560, 0],
+      [ZOOM + 0.6, 560, 560, 0],
+      [ZOOM + 0.9, 560, 560],
+      [CLICK - 0.6, 760, 330],
+      [CLICK + 0.4, 760, 330],
+      [UNZOOM + 0.2, 860, 440],
+      [UNZOOM + 0.6, 860, 440, 0],
     ],
-    clicks: [[9.3, 196, 430]],
+    clicks: [[CLICK, 760, 330]],
     focus: [
-      [2, 3.5, 640, 84, 280, 66, 16],
-      [7.9, 9.5, 36, 374, 424, 140, 16],
-      [11.3, 12.4, 628, 72, 304, 234, 20],
+      [2, LEAVES - 0.2, 28, 488, 204, 100, 26],
+      [ZOOM + 0.7, UNZOOM - 0.1, 638, 302, 292, 56, 14],
+      [RAIL_LOOK, APART - 0.4, 28, 488, 786, 100, 26],
     ],
-    // Ends between the page and the rail: the empty page before, the three topics now
     split: [
       [0, 960, 0],
-      [5.7, 960, 0],
-      [5.8, 960],
-      [7, 0],
-      [7.1, 0, 0],
-      [12.4, 0, 0],
-      [12.5, 0],
-      [13.5, 620],
+      [WIPE - 0.1, 960, 0],
+      [WIPE, 960],
+      [WIPE + 1.4, 0],
+      [WIPE + 1.5, 0, 0],
     ],
     Picture: SessionsPicture,
   },

@@ -16,14 +16,12 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AccountPicker } from './AccountPicker'
-import { ProfilesField } from './Profiles'
 import { WorkspacesView } from './WorkspacesView'
 import { ShortcutField } from './ShortcutField'
 import { TimePicker } from './TimePicker'
 import { AddCalendarMenu, AddTrackerMenu, TrackerBadge, TRACKER_HINT, trackerInfo } from './Trackers'
 import { calendarInfo } from '../../shared/calendars'
 import type { GranolaStatus } from '../../shared/calls'
-import { PROFILE_LABEL, type Profiles } from '../../shared/profiles'
 import type { TrackerName } from '../../shared/trackers'
 import { useEffect, useState, type FormEvent } from 'react'
 import type { GithubAccounts, NotificationAccess, Settings, SettingsPatch } from '../../shared/types'
@@ -72,15 +70,12 @@ export function SettingsPanel({
   onReplay,
   onSaved,
   onError,
-  onProfiles,
   initialView = 'main',
 }: {
   onClose(): void
   onReplay(): void
   onSaved(): void
   onError(message: string): void
-  // Adding or hiding Perso shows or hides the switch at once, without Enregistrer
-  onProfiles(profiles: Profiles): void
   // The selector's button opens the window straight on its Espaces page
   initialView?: 'main' | 'workspaces'
 }) {
@@ -91,7 +86,6 @@ export function SettingsPanel({
   const [accounts, setAccounts] = useState<GithubAccounts | null>(lastAccounts)
   const [granola, setGranola] = useState<GranolaStatus | null>(null)
   const [access, setAccess] = useState<NotificationAccess | null>(null)
-  const [profiles, setProfiles] = useState<Profiles | null>(null)
 
   useEffect(() => {
     // Back from System Settings, the window regains focus: read the permission again
@@ -108,7 +102,6 @@ export function SettingsPanel({
 
   useEffect(() => {
     void window.flux.getSettings().then(setSettings)
-    void window.flux.profiles().then(setProfiles)
     void window.flux
       .githubAccounts()
       .then(fresh => {
@@ -179,22 +172,11 @@ export function SettingsPanel({
       ) : (
       <>
       <header>
-        <h1>Réglages{profiles?.perso ? ` · ${PROFILE_LABEL[profiles.active]}` : ''}</h1>
+        <h1>Réglages</h1>
         <button type="button" className="round glass small" aria-label="Fermer" onClick={onClose}>
           <X size={16} aria-hidden="true" />
         </button>
       </header>
-
-      {profiles && (
-        <ProfilesField
-          profiles={profiles}
-          onChange={fresh => {
-            setProfiles(fresh)
-            onProfiles(fresh)
-          }}
-          onError={onError}
-        />
-      )}
 
       <div className="field">
         <span>Compte GitHub</span>

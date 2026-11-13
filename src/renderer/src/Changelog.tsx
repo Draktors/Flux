@@ -10,7 +10,6 @@ const ENTRIES: Array<{ id: string; date: string; text: string; scene?: string }>
     text: 'Les conversations Claude restent En cours et se rouvrent depuis les liens du sujet',
     scene: 'sessions',
   },
-  { id: '2026-11-12-profiles', date: '12 nov.', text: 'Profils Pro et Perso, chacun avec ses réglages' },
   { id: '2026-11-12-workspaces', date: '12 nov.', text: 'Espaces par produit, compte GitHub au choix, Jira en plus de Linear' },
   { id: '2026-11-12-search', date: '12 nov.', text: 'Recherche ⌘K dans tout Flux' },
   { id: '2026-11-12-links', date: '12 nov.', text: 'Clic droit : copier le lien source ou le lien Flux, qui rouvre Flux au bon endroit' },

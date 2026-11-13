@@ -13,7 +13,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AppState, Settings as FluxSettings, SourceName, TopicView } from '../../shared/types'
 import type { CallsState } from '../../shared/calls'
 import { parseFluxLink } from '../../shared/links'
-import type { Profiles } from '../../shared/profiles'
 import { knowsSprint, outsideSprint } from '../../shared/sprint'
 import { Boot, type BootProgress } from './Boot'
 import { CallsView } from './CallsView'
@@ -34,7 +33,6 @@ import {
   type SheetTab,
   type Tab,
 } from './navigation'
-import { ProfileSwitch } from './Profiles'
 import { ownerGroups, Rail } from './Rail'
 import { rankStyle, type RankStyle } from './rankStyle'
 import { Search } from './Search'
@@ -102,7 +100,6 @@ export function App() {
   const [onboarding, setOnboarding] = useState(false)
   const [sceneTint, setSceneTint] = useState<RankStyle | null>(null)
   const [settings, setSettings] = useState<FluxSettings | null>(null)
-  const [profiles, setProfiles] = useState<Profiles | null>(null)
   const [progress, setProgress] = useState<BootProgress>({})
   const [boot, setBoot] = useState<'playing' | 'leaving' | 'done'>('playing')
   const [refreshing, setRefreshing] = useState(false)
@@ -147,7 +144,6 @@ export function App() {
       setSettings(loaded)
       setOnboarding(!loaded.onboarded)
     })
-    void window.flux.profiles().then(setProfiles)
   }, [])
 
   useEffect(() => {
@@ -321,7 +317,6 @@ export function App() {
           onDone={() => {
             setOnboarding(false)
             setSceneTint(null)
-            void window.flux.profiles().then(setProfiles)
             void window.flux.refresh()
           }}
         />
@@ -400,9 +395,6 @@ export function App() {
               <Waves size={16} strokeWidth={2.4} aria-hidden="true" />
             </span>
             <span className="brand-name">Flux</span>
-            {profiles?.perso && (
-              <ProfileSwitch profiles={profiles} onError={message => showToast(message, 'error')} />
-            )}
             {state.workspaces.length > 1 && (
               <nav className="tabs glass lens workspace-switch" aria-label="Espace de travail">
                 {state.workspaces.map(workspace => (
@@ -594,11 +586,9 @@ export function App() {
             }}
             onSaved={() => {
               setSettingsOpen(false)
-              void window.flux.profiles().then(setProfiles)
               showToast('Réglages enregistrés')
             }}
             onError={message => showToast(message, 'error')}
-            onProfiles={setProfiles}
             initialView={settingsView}
           />
         )}
